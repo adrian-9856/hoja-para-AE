@@ -1,0 +1,18 @@
+# Google Apps Script
+.clasp.json
+.claspignore
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Credentials (if accidentally saved)
+*.env
+credentials.json
