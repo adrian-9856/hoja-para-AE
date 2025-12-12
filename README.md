@@ -108,14 +108,16 @@ Puedes configurar una importación automática programada:
 
 ## ❗ Solución de Problemas
 
-### Error 404: "No Asset matches the given query"
+### Error 404: "Page not found"
 
-**Causa**: El Asset ID es incorrecto o el formulario no existe.
+**Causa**: El Asset ID es incorrecto, el formulario no existe, o el endpoint de la API es incorrecto.
 
 **Solución**:
-1. Verifica que el Asset ID sea correcto
+1. Verifica que el Asset ID sea correcto (debe ser un UID como `aXyZ123ABC`)
 2. Ejecuta `configurarCredenciales()` nuevamente con el ID correcto
 3. Asegúrate de que el formulario exista en tu cuenta de KoboToolbox
+4. Verifica que el formulario tenga datos/submissions (si está vacío, podría dar error)
+5. Si usas KoboToolbox EU, cambia `kf.kobotoolbox.org` a `eu.kobotoolbox.org` en el código
 
 ### Error 401: "Authentication credentials were not provided"
 

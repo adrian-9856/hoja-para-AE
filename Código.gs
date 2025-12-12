@@ -72,7 +72,7 @@ function importarCSVdesdeKobo() {
     }
 
     // Construir la URL de la API de KoboToolbox
-    const url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/data.csv`;
+    const url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/data/?format=csv`;
 
     // Configurar la petición con autenticación
     const opciones = {
@@ -155,7 +155,7 @@ function importarCSVconSeparadorPersonalizado(separador) {
       throw new Error('Configuración no encontrada. Ejecuta configurarCredenciales() primero.');
     }
 
-    const url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/data.csv`;
+    const url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/data/?format=csv`;
 
     const opciones = {
       method: 'get',
