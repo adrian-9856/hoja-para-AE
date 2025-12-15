@@ -13,10 +13,16 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('KoboToolbox')
     .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
+    .addItem('🔄 Actualizar Datos', 'actualizarDatosAutomatico')
     .addSeparator()
     .addSubMenu(ui.createMenu('📤 Copiar a Otra Hoja')
       .addItem('Copiar Todos los Datos', 'enviarDatosAOtraHoja')
       .addItem('Copiar Columnas Específicas', 'copiarColumnasEspecificas'))
+    .addSeparator()
+    .addSubMenu(ui.createMenu('⚙️ Configurar')
+      .addItem('Activar Actualización Automática', 'configurarActualizacionAutomatica')
+      .addItem('Desactivar Actualización Automática', 'desactivarActualizacionAutomatica')
+      .addItem('Ver Estado de Actualización', 'verEstadoActualizacion'))
     .addToUi();
 }
 
@@ -444,5 +450,223 @@ function copiarColumnasEspecificas() {
   } catch (error) {
     ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
     Logger.log('Error: ' + error.stack);
+  }
+}
+
+/**
+ * Actualiza los datos automáticamente (sin mostrar alertas)
+ * Esta función se usa para triggers automáticos
+ */
+function actualizarDatosAutomatico() {
+  try {
+    // Descargar CSV
+    const response = UrlFetchApp.fetch(KOBO_EXPORT_URL, {
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      Logger.log('Error al actualizar: código ' + response.getResponseCode());
+      return;
+    }
+
+    const csv = response.getContentText();
+
+    if (!csv || csv.trim().length === 0) {
+      Logger.log('No hay datos para actualizar');
+      return;
+    }
+
+    // Detectar separador y parsear
+    const separador = detectarSeparador(csv);
+    let datos;
+
+    try {
+      if (separador === ',') {
+        datos = Utilities.parseCsv(csv);
+      } else {
+        datos = parsearCSV(csv, separador);
+      }
+    } catch (e) {
+      datos = parsearCSV(csv, separador);
+    }
+
+    if (!datos || datos.length === 0) {
+      Logger.log('No se encontraron datos para actualizar');
+      return;
+    }
+
+    // Normalizar datos
+    datos = normalizarDatos(datos);
+
+    // Obtener o crear la hoja
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    let hoja = spreadsheet.getSheetByName("DatosKobo");
+
+    if (!hoja) {
+      hoja = spreadsheet.insertSheet("DatosKobo");
+    }
+
+    // Limpiar y escribir datos
+    hoja.clear();
+    const numFilas = datos.length;
+    const numColumnas = datos[0].length;
+
+    hoja.getRange(1, 1, numFilas, numColumnas).setValues(datos);
+
+    // Formatear encabezado
+    const rangoEncabezado = hoja.getRange(1, 1, 1, numColumnas);
+    rangoEncabezado.setFontWeight('bold');
+    rangoEncabezado.setBackground('#4285f4');
+    rangoEncabezado.setFontColor('#ffffff');
+    rangoEncabezado.setWrap(true);
+    rangoEncabezado.setVerticalAlignment('middle');
+
+    hoja.setRowHeight(1, 60);
+
+    // Autoajustar columnas
+    for (let i = 1; i <= numColumnas; i++) {
+      hoja.autoResizeColumn(i);
+      const anchoActual = hoja.getColumnWidth(i);
+
+      if (anchoActual < 100) {
+        hoja.setColumnWidth(i, 100);
+      } else if (anchoActual > 300) {
+        hoja.setColumnWidth(i, 300);
+      }
+    }
+
+    hoja.setFrozenRows(1);
+
+    // Registrar última actualización
+    const propiedades = PropertiesService.getScriptProperties();
+    propiedades.setProperty('ULTIMA_ACTUALIZACION', new Date().toLocaleString('es-ES'));
+
+    Logger.log(`Datos actualizados: ${numFilas - 1} registros`);
+
+  } catch (error) {
+    Logger.log('Error en actualización automática: ' + error.message);
+  }
+}
+
+/**
+ * Configura la actualización automática
+ */
+function configurarActualizacionAutomatica() {
+  const ui = SpreadsheetApp.getUi();
+
+  const respuesta = ui.prompt(
+    'Configurar Actualización Automática',
+    '¿Cada cuántas horas deseas actualizar los datos?\n\n' +
+    'Opciones recomendadas:\n' +
+    '1 = Cada hora\n' +
+    '6 = Cada 6 horas\n' +
+    '12 = Cada 12 horas\n' +
+    '24 = Una vez al día\n\n' +
+    'Ingresa el número de horas:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (respuesta.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+
+  const horas = parseInt(respuesta.getResponseText().trim());
+
+  if (isNaN(horas) || horas < 1 || horas > 24) {
+    ui.alert('Error', 'Por favor ingresa un número válido entre 1 y 24', ui.ButtonSet.OK);
+    return;
+  }
+
+  try {
+    // Eliminar triggers existentes
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'actualizarDatosAutomatico') {
+        ScriptApp.deleteTrigger(trigger);
+      }
+    }
+
+    // Crear nuevo trigger
+    ScriptApp.newTrigger('actualizarDatosAutomatico')
+      .timeBased()
+      .everyHours(horas)
+      .create();
+
+    ui.alert(
+      '✅ Activado',
+      `Los datos se actualizarán automáticamente cada ${horas} hora(s).\n\n` +
+      `Próxima actualización: dentro de ${horas} hora(s)`,
+      ui.ButtonSet.OK
+    );
+
+  } catch (error) {
+    ui.alert('❌ Error', 'Error al configurar actualización: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Desactiva la actualización automática
+ */
+function desactivarActualizacionAutomatica() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    let eliminados = 0;
+
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'actualizarDatosAutomatico') {
+        ScriptApp.deleteTrigger(trigger);
+        eliminados++;
+      }
+    }
+
+    if (eliminados > 0) {
+      ui.alert('✅ Desactivado', 'La actualización automática ha sido desactivada', ui.ButtonSet.OK);
+    } else {
+      ui.alert('ℹ️ Información', 'No había ninguna actualización automática activa', ui.ButtonSet.OK);
+    }
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Muestra el estado de la actualización automática
+ */
+function verEstadoActualizacion() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    let triggerActivo = null;
+
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'actualizarDatosAutomatico') {
+        triggerActivo = trigger;
+        break;
+      }
+    }
+
+    const propiedades = PropertiesService.getScriptProperties();
+    const ultimaActualizacion = propiedades.getProperty('ULTIMA_ACTUALIZACION') || 'Nunca';
+
+    let mensaje = `Última actualización: ${ultimaActualizacion}\n\n`;
+
+    if (triggerActivo) {
+      const tipo = triggerActivo.getEventType();
+      mensaje += '✅ Estado: ACTIVO\n\n';
+      mensaje += 'La hoja se actualiza automáticamente según el intervalo configurado.';
+    } else {
+      mensaje += '⚠️ Estado: INACTIVO\n\n';
+      mensaje += 'Para activar la actualización automática, ve a:\n';
+      mensaje += 'KoboToolbox > ⚙️ Configurar > Activar Actualización Automática';
+    }
+
+    ui.alert('Estado de Actualización', mensaje, ui.ButtonSet.OK);
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
   }
 }
