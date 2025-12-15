@@ -21,9 +21,43 @@ function onOpen() {
 }
 
 /**
- * Parsea CSV correctamente manejando campos con comillas y comas
+ * Detecta el separador del CSV (coma o punto y coma)
  */
-function parsearCSV(texto) {
+function detectarSeparador(texto) {
+  // Tomar las primeras líneas para analizar
+  const primerasLineas = texto.split('\n').slice(0, 5).join('\n');
+
+  // Contar ocurrencias de cada separador (fuera de comillas)
+  let dentroComillas = false;
+  let comas = 0;
+  let puntosComa = 0;
+
+  for (let i = 0; i < primerasLineas.length; i++) {
+    const char = primerasLineas[i];
+
+    if (char === '"') {
+      dentroComillas = !dentroComillas;
+    } else if (!dentroComillas) {
+      if (char === ',') comas++;
+      if (char === ';') puntosComa++;
+    }
+  }
+
+  // Retornar el separador más común
+  Logger.log(`Detectados - Comas: ${comas}, Puntos y coma: ${puntosComa}`);
+  return puntosComa > comas ? ';' : ',';
+}
+
+/**
+ * Parsea CSV correctamente manejando campos con comillas y separadores
+ */
+function parsearCSV(texto, separador) {
+  // Si no se especifica separador, detectarlo automáticamente
+  if (!separador) {
+    separador = detectarSeparador(texto);
+    Logger.log(`Usando separador: "${separador}"`);
+  }
+
   const filas = [];
   let filaActual = [];
   let campoActual = '';
@@ -42,9 +76,9 @@ function parsearCSV(texto) {
         // Alternar estado de comillas
         dentroDeComillas = !dentroDeComillas;
       }
-    } else if (char === ',' && !dentroDeComillas) {
+    } else if (char === separador && !dentroDeComillas) {
       // Fin de campo
-      filaActual.push(campoActual);
+      filaActual.push(campoActual.trim());
       campoActual = '';
     } else if ((char === '\n' || char === '\r') && !dentroDeComillas) {
       // Fin de fila
@@ -52,8 +86,8 @@ function parsearCSV(texto) {
         i++; // Saltar \n en \r\n
       }
       if (campoActual || filaActual.length > 0) {
-        filaActual.push(campoActual);
-        if (filaActual.some(campo => campo.trim() !== '')) {
+        filaActual.push(campoActual.trim());
+        if (filaActual.some(campo => campo !== '')) {
           filas.push(filaActual);
         }
         filaActual = [];
@@ -67,8 +101,8 @@ function parsearCSV(texto) {
 
   // Agregar última fila si existe
   if (campoActual || filaActual.length > 0) {
-    filaActual.push(campoActual);
-    if (filaActual.some(campo => campo.trim() !== '')) {
+    filaActual.push(campoActual.trim());
+    if (filaActual.some(campo => campo !== '')) {
       filas.push(filaActual);
     }
   }
@@ -127,13 +161,25 @@ function importarCSVdesdeKobo() {
 
     Logger.log('CSV descargado correctamente. Tamaño: ' + csv.length + ' caracteres');
 
+    // Detectar separador
+    const separador = detectarSeparador(csv);
+    Logger.log(`Separador detectado: "${separador}"`);
+
     // Parsear CSV
     let datos;
     try {
-      datos = Utilities.parseCsv(csv);
+      // Intentar con Utilities.parseCsv si usa coma
+      if (separador === ',') {
+        datos = Utilities.parseCsv(csv);
+        Logger.log('Usando Utilities.parseCsv (coma)');
+      } else {
+        // Usar parser personalizado para punto y coma
+        datos = parsearCSV(csv, separador);
+        Logger.log('Usando parser personalizado (punto y coma)');
+      }
     } catch (e) {
-      Logger.log('Utilities.parseCsv falló, usando parser personalizado');
-      datos = parsearCSV(csv);
+      Logger.log('Parser estándar falló, usando parser personalizado');
+      datos = parsearCSV(csv, separador);
     }
 
     if (!datos || datos.length === 0) {
@@ -173,12 +219,15 @@ function importarCSVdesdeKobo() {
     // Ajustar altura de encabezado
     hoja.setRowHeight(1, 60);
 
-    // Autoajustar columnas
+    // Autoajustar columnas con límites
     for (let i = 1; i <= numColumnas; i++) {
       hoja.autoResizeColumn(i);
-      // Limitar ancho máximo de columna
       const anchoActual = hoja.getColumnWidth(i);
-      if (anchoActual > 300) {
+
+      // Establecer ancho mínimo de 100px y máximo de 300px
+      if (anchoActual < 100) {
+        hoja.setColumnWidth(i, 100);
+      } else if (anchoActual > 300) {
         hoja.setColumnWidth(i, 300);
       }
     }
