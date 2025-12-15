@@ -12,6 +12,21 @@ Este proyecto permite importar automáticamente datos desde KoboToolbox a una ho
 - ✅ Manejo de errores robusto
 - ✅ Soporte para diferentes separadores CSV
 
+## ✨ Nuevas Funcionalidades
+
+### 📤 Enviar Datos a Otra Hoja
+- **Copiar Todos los Datos**: Copia todos los datos de DatosKobo a otra hoja
+  - Opción de reemplazar datos existentes o agregar al final
+  - Formateo automático de encabezados
+- **Copiar Columnas Específicas**: Selecciona solo las columnas que necesitas copiar
+  - Interfaz interactiva para elegir columnas
+  - Útil para crear vistas personalizadas de tus datos
+
+### 🔧 Configuración Mejorada
+- **Export Settings ID**: Configuración automática del endpoint correcto de KoboToolbox
+- **Verificación de Conexión**: Comprueba que tus credenciales funcionen correctamente
+- **Menú Organizado**: Submenús para fácil navegación
+
 ## 📋 Requisitos Previos
 
 1. Una cuenta de KoboToolbox (https://kf.kobotoolbox.org)
@@ -73,25 +88,52 @@ Hay dos formas de obtener el Asset ID:
 
 ### Importar Datos
 
-Una vez configuradas las credenciales, puedes importar datos de dos formas:
+Una vez configuradas las credenciales, puedes importar datos:
 
-#### Opción 1: Usando el Menú (Recomendado)
-1. Haz clic en **KoboToolbox** > **Importar Datos**
+#### Usando el Menú (Recomendado)
+1. Haz clic en **KoboToolbox** > **📥 Importar** > **Importar Datos**
 2. Los datos se importarán automáticamente a una nueva hoja llamada "DatosKobo"
 
-#### Opción 2: Ejecutando la Función Manualmente
-1. Ve a **Extensiones** > **Apps Script**
-2. Selecciona la función `importarCSVdesdeKobo` en el menú desplegable
-3. Haz clic en el botón **Ejecutar** (▶)
+#### Importar con Separador Personalizado
+Si tu CSV usa punto y coma como separador:
+1. **KoboToolbox** > **📥 Importar** > **Importar con separador ;**
 
 ### Verificar Conexión
 
 Para verificar que tus credenciales están correctas:
+1. **KoboToolbox** > **⚙️ Configuración** > **Verificar Conexión**
+2. Verás un mensaje con el nombre del formulario y el número de respuestas
 
-1. Ve a **Extensiones** > **Apps Script**
-2. Selecciona la función `verificarConexion`
-3. Haz clic en **Ejecutar**
-4. Verás un mensaje con el nombre del formulario y el número de respuestas
+### 📤 Enviar Datos a Otra Hoja
+
+#### Copiar Todos los Datos
+1. Primero importa los datos de KoboToolbox
+2. **KoboToolbox** > **📤 Enviar a Otra Hoja** > **Copiar Todos los Datos**
+3. Ingresa el nombre de la hoja destino
+4. Elige si quieres:
+   - **REEMPLAZAR** los datos existentes (Sí)
+   - **AGREGAR** al final de la hoja (No)
+
+#### Copiar Solo Columnas Específicas
+1. **KoboToolbox** > **📤 Enviar a Otra Hoja** > **Copiar Columnas Específicas**
+2. Verás una lista numerada de todas las columnas disponibles
+3. Ingresa los números de las columnas que quieres copiar (ej: `1,3,5,7`)
+4. Ingresa el nombre de la hoja destino
+5. Los datos seleccionados se copiarán automáticamente
+
+**Ejemplo de uso:**
+```
+Columnas disponibles:
+1. _id
+2. Nombre
+3. Edad
+4. Ciudad
+5. Email
+
+Ingresa: 2,3,4
+
+Resultado: Se copiarán solo las columnas Nombre, Edad y Ciudad
+```
 
 ## 🔄 Automatización (Opcional)
 
@@ -114,10 +156,17 @@ Puedes configurar una importación automática programada:
 
 **Solución**:
 1. Verifica que el Asset ID sea correcto (debe ser un UID como `aXyZ123ABC`)
-2. Ejecuta `configurarCredenciales()` nuevamente con el ID correcto
-3. Asegúrate de que el formulario exista en tu cuenta de KoboToolbox
-4. Verifica que el formulario tenga datos/submissions (si está vacío, podría dar error)
+2. Ejecuta `configurarCredenciales()` nuevamente - ahora obtiene automáticamente el Export Settings ID
+3. Si la configuración automática falla, configura manualmente:
+   - Ve a https://kf.kobotoolbox.org/api/v2/assets/TU_ASSET_ID/export-settings/
+   - Busca el campo `uid` del primer resultado
+   - Ejecuta `configurarExportSettings()` e ingresa ese UID
+4. Asegúrate de que el formulario exista y tenga datos publicados
 5. Si usas KoboToolbox EU, cambia `kf.kobotoolbox.org` a `eu.kobotoolbox.org` en el código
+
+**URL correcta del endpoint:**
+- ✅ Correcto: `https://kf.kobotoolbox.org/api/v2/assets/{assetId}/export-settings/{exportSettingsId}/data.csv`
+- ❌ Incorrecto: `https://kf.kobotoolbox.org/api/v2/assets/{assetId}/data.csv`
 
 ### Error 401: "Authentication credentials were not provided"
 
@@ -154,13 +203,31 @@ Puedes configurar una importación automática programada:
 
 ## 📝 Funciones Disponibles
 
+### Configuración
+| Función | Descripción |
+|---------|-------------|
+| `configurarCredenciales()` | Configura el API Token y Asset ID |
+| `configurarExportSettings()` | Configura manualmente el Export Settings ID |
+| `obtenerExportSettingsId()` | Obtiene automáticamente el Export Settings ID |
+| `verificarConexion()` | Verifica que las credenciales sean correctas |
+
+### Importación
+| Función | Descripción |
+|---------|-------------|
+| `importarCSVdesdeKobo()` | Importa datos desde KoboToolbox usando export-settings |
+| `importarCSVconSeparadorPersonalizado(separador)` | Importa usando un separador específico |
+| `importarConPuntoComa()` | Importa usando punto y coma como separador |
+
+### Exportación/Copia
+| Función | Descripción |
+|---------|-------------|
+| `enviarDatosAOtraHoja()` | Copia todos los datos a otra hoja (reemplazar o agregar) |
+| `copiarColumnasEspecificas()` | Copia solo columnas seleccionadas a otra hoja |
+
+### Sistema
 | Función | Descripción |
 |---------|-------------|
 | `onOpen()` | Crea el menú personalizado al abrir la hoja |
-| `configurarCredenciales()` | Configura el API Token y Asset ID |
-| `importarCSVdesdeKobo()` | Importa datos desde KoboToolbox |
-| `importarCSVconSeparadorPersonalizado(separador)` | Importa usando un separador específico |
-| `verificarConexion()` | Verifica que las credenciales sean correctas |
 
 ## 🆘 Soporte
 
