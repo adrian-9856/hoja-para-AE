@@ -14,15 +14,17 @@ function onOpen() {
   ui.createMenu('KoboToolbox')
     .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
     .addItem('🔄 Actualizar Datos', 'actualizarDatosAutomatico')
+    .addItem('🔄 Sincronizar con Hoja Principal', 'sincronizarConHojaPrincipal')
     .addSeparator()
     .addSubMenu(ui.createMenu('📤 Copiar a Otra Hoja')
       .addItem('Copiar Todos los Datos', 'enviarDatosAOtraHoja')
       .addItem('Copiar Columnas Específicas', 'copiarColumnasEspecificas'))
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Configurar')
-      .addItem('Activar Actualización Automática', 'configurarActualizacionAutomatica')
-      .addItem('Desactivar Actualización Automática', 'desactivarActualizacionAutomatica')
-      .addItem('Ver Estado de Actualización', 'verEstadoActualizacion'))
+      .addItem('Configurar Hoja Principal', 'configurarHojaPrincipal')
+      .addItem('Activar Sincronización Automática', 'activarSincronizacionAutomatica')
+      .addItem('Desactivar Sincronización Automática', 'desactivarSincronizacionAutomatica')
+      .addItem('Ver Estado de Sincronización', 'verEstadoSincronizacion'))
     .addToUi();
 }
 
@@ -665,6 +667,452 @@ function verEstadoActualizacion() {
     }
 
     ui.alert('Estado de Actualización', mensaje, ui.ButtonSet.OK);
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Configura el nombre de la hoja principal donde se sincronizarán los datos
+ */
+function configurarHojaPrincipal() {
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Obtener lista de hojas
+  const hojas = spreadsheet.getSheets();
+  let mensaje = 'Hojas disponibles:\n\n';
+
+  hojas.forEach((hoja, index) => {
+    mensaje += `${index + 1}. ${hoja.getName()}\n`;
+  });
+
+  const respuesta = ui.prompt(
+    'Configurar Hoja Principal',
+    mensaje + '\n\nIngresa el NOMBRE de la hoja donde quieres sincronizar los datos:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (respuesta.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+
+  const nombreHoja = respuesta.getResponseText().trim();
+
+  // Verificar que la hoja existe
+  const hoja = spreadsheet.getSheetByName(nombreHoja);
+
+  if (!hoja) {
+    ui.alert('❌ Error', `La hoja "${nombreHoja}" no existe.`, ui.ButtonSet.OK);
+    return;
+  }
+
+  // Guardar configuración
+  const propiedades = PropertiesService.getScriptProperties();
+  propiedades.setProperty('HOJA_PRINCIPAL', nombreHoja);
+
+  ui.alert(
+    '✅ Configurado',
+    `La hoja principal es ahora: "${nombreHoja}"\n\n` +
+    `Usa "🔄 Sincronizar con Hoja Principal" para enviar solo datos nuevos.`,
+    ui.ButtonSet.OK
+  );
+}
+
+/**
+ * Sincroniza datos de DatosKobo con la hoja principal
+ * Solo agrega filas nuevas y columnas que coinciden
+ */
+function sincronizarConHojaPrincipal() {
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+
+  try {
+    // Obtener configuración
+    const propiedades = PropertiesService.getScriptProperties();
+    const nombreHojaPrincipal = propiedades.getProperty('HOJA_PRINCIPAL');
+
+    if (!nombreHojaPrincipal) {
+      ui.alert(
+        '⚠️ Configuración necesaria',
+        'Primero configura la hoja principal:\n\n' +
+        'KoboToolbox > ⚙️ Configurar > Configurar Hoja Principal',
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+
+    // Obtener hojas
+    const hojaOrigen = spreadsheet.getSheetByName("DatosKobo");
+    const hojaPrincipal = spreadsheet.getSheetByName(nombreHojaPrincipal);
+
+    if (!hojaOrigen) {
+      ui.alert('❌ Error', 'No se encontró la hoja "DatosKobo". Primero importa los datos.', ui.ButtonSet.OK);
+      return;
+    }
+
+    if (!hojaPrincipal) {
+      ui.alert('❌ Error', `No se encontró la hoja "${nombreHojaPrincipal}".`, ui.ButtonSet.OK);
+      return;
+    }
+
+    // Obtener datos
+    const datosOrigen = hojaOrigen.getDataRange().getValues();
+    const datosPrincipal = hojaPrincipal.getDataRange().getValues();
+
+    if (datosOrigen.length === 0) {
+      ui.alert('❌ Error', 'La hoja "DatosKobo" está vacía.', ui.ButtonSet.OK);
+      return;
+    }
+
+    // Encabezados
+    const encabezadosOrigen = datosOrigen[0];
+    const encabezadosPrincipal = datosPrincipal.length > 0 ? datosPrincipal[0] : [];
+
+    // Encontrar columnas coincidentes
+    const mapeoColumnas = [];
+    const nuevasColumnas = [];
+
+    for (let i = 0; i < encabezadosOrigen.length; i++) {
+      const columnaOrigen = encabezadosOrigen[i].toString().trim();
+      const indicePrincipal = encabezadosPrincipal.findIndex(col =>
+        col.toString().trim().toLowerCase() === columnaOrigen.toLowerCase()
+      );
+
+      if (indicePrincipal >= 0) {
+        mapeoColumnas.push({ origen: i, principal: indicePrincipal, nombre: columnaOrigen });
+      } else {
+        nuevasColumnas.push({ origen: i, nombre: columnaOrigen });
+      }
+    }
+
+    Logger.log(`Columnas coincidentes: ${mapeoColumnas.length}`);
+    Logger.log(`Columnas nuevas: ${nuevasColumnas.length}`);
+
+    // Agregar nuevas columnas al final de la hoja principal
+    if (nuevasColumnas.length > 0) {
+      const ultimaColumna = encabezadosPrincipal.length;
+
+      for (let i = 0; i < nuevasColumnas.length; i++) {
+        const col = nuevasColumnas[i];
+        hojaPrincipal.getRange(1, ultimaColumna + i + 1).setValue(col.nombre);
+        encabezadosPrincipal.push(col.nombre);
+        mapeoColumnas.push({ origen: col.origen, principal: ultimaColumna + i, nombre: col.nombre });
+      }
+
+      // Formatear nuevas columnas
+      const rangoNuevasColumnas = hojaPrincipal.getRange(1, ultimaColumna + 1, 1, nuevasColumnas.length);
+      rangoNuevasColumnas.setFontWeight('bold');
+      rangoNuevasColumnas.setBackground('#4285f4');
+      rangoNuevasColumnas.setFontColor('#ffffff');
+    }
+
+    // Detectar filas nuevas (usar primera columna como identificador)
+    const datosExistentes = new Set();
+
+    for (let i = 1; i < datosPrincipal.length; i++) {
+      // Crear un identificador único combinando las primeras 3 columnas
+      const id = datosPrincipal[i].slice(0, 3).join('|');
+      datosExistentes.add(id);
+    }
+
+    // Filtrar solo filas nuevas
+    const filasNuevas = [];
+
+    for (let i = 1; i < datosOrigen.length; i++) {
+      const filaOrigen = datosOrigen[i];
+      const id = filaOrigen.slice(0, 3).join('|');
+
+      if (!datosExistentes.has(id)) {
+        // Crear fila con datos mapeados
+        const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
+
+        mapeoColumnas.forEach(mapeo => {
+          nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
+        });
+
+        filasNuevas.push(nuevaFila);
+      }
+    }
+
+    Logger.log(`Filas nuevas detectadas: ${filasNuevas.length}`);
+
+    if (filasNuevas.length === 0) {
+      ui.alert(
+        'ℹ️ Sin cambios',
+        'No hay datos nuevos para sincronizar.\n\nTodos los registros ya existen en la hoja principal.',
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+
+    // Agregar filas nuevas al final
+    const ultimaFila = hojaPrincipal.getLastRow();
+    hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosPrincipal.length).setValues(filasNuevas);
+
+    // Registrar sincronización
+    propiedades.setProperty('ULTIMA_SINCRONIZACION', new Date().toLocaleString('es-ES'));
+    propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS', filasNuevas.length.toString());
+
+    ui.alert(
+      '✅ Sincronización exitosa',
+      `Se agregaron ${filasNuevas.length} filas nuevas a "${nombreHojaPrincipal}"\n\n` +
+      `Columnas coincidentes: ${mapeoColumnas.length}\n` +
+      `Columnas nuevas agregadas: ${nuevasColumnas.length}`,
+      ui.ButtonSet.OK
+    );
+
+  } catch (error) {
+    ui.alert('❌ Error', 'Error al sincronizar: ' + error.message, ui.ButtonSet.OK);
+    Logger.log('Error: ' + error.stack);
+  }
+}
+
+/**
+ * Función de sincronización automática (silenciosa)
+ */
+function sincronizarAutomatico() {
+  try {
+    // Primero actualizar DatosKobo
+    actualizarDatosAutomatico();
+
+    // Esperar un segundo
+    Utilities.sleep(1000);
+
+    // Luego sincronizar con hoja principal
+    const propiedades = PropertiesService.getScriptProperties();
+    const nombreHojaPrincipal = propiedades.getProperty('HOJA_PRINCIPAL');
+
+    if (!nombreHojaPrincipal) {
+      Logger.log('No hay hoja principal configurada');
+      return;
+    }
+
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const hojaOrigen = spreadsheet.getSheetByName("DatosKobo");
+    const hojaPrincipal = spreadsheet.getSheetByName(nombreHojaPrincipal);
+
+    if (!hojaOrigen || !hojaPrincipal) {
+      Logger.log('Hojas no encontradas');
+      return;
+    }
+
+    const datosOrigen = hojaOrigen.getDataRange().getValues();
+    const datosPrincipal = hojaPrincipal.getDataRange().getValues();
+
+    if (datosOrigen.length === 0) {
+      Logger.log('No hay datos en DatosKobo');
+      return;
+    }
+
+    const encabezadosOrigen = datosOrigen[0];
+    const encabezadosPrincipal = datosPrincipal.length > 0 ? datosPrincipal[0] : [];
+
+    // Mapear columnas
+    const mapeoColumnas = [];
+    const nuevasColumnas = [];
+
+    for (let i = 0; i < encabezadosOrigen.length; i++) {
+      const columnaOrigen = encabezadosOrigen[i].toString().trim();
+      const indicePrincipal = encabezadosPrincipal.findIndex(col =>
+        col.toString().trim().toLowerCase() === columnaOrigen.toLowerCase()
+      );
+
+      if (indicePrincipal >= 0) {
+        mapeoColumnas.push({ origen: i, principal: indicePrincipal });
+      } else {
+        nuevasColumnas.push({ origen: i, nombre: columnaOrigen });
+      }
+    }
+
+    // Agregar nuevas columnas
+    if (nuevasColumnas.length > 0) {
+      const ultimaColumna = encabezadosPrincipal.length;
+
+      for (let i = 0; i < nuevasColumnas.length; i++) {
+        const col = nuevasColumnas[i];
+        hojaPrincipal.getRange(1, ultimaColumna + i + 1).setValue(col.nombre);
+        encabezadosPrincipal.push(col.nombre);
+        mapeoColumnas.push({ origen: col.origen, principal: ultimaColumna + i });
+      }
+    }
+
+    // Detectar filas nuevas
+    const datosExistentes = new Set();
+
+    for (let i = 1; i < datosPrincipal.length; i++) {
+      const id = datosPrincipal[i].slice(0, 3).join('|');
+      datosExistentes.add(id);
+    }
+
+    const filasNuevas = [];
+
+    for (let i = 1; i < datosOrigen.length; i++) {
+      const filaOrigen = datosOrigen[i];
+      const id = filaOrigen.slice(0, 3).join('|');
+
+      if (!datosExistentes.has(id)) {
+        const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
+
+        mapeoColumnas.forEach(mapeo => {
+          nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
+        });
+
+        filasNuevas.push(nuevaFila);
+      }
+    }
+
+    if (filasNuevas.length > 0) {
+      const ultimaFila = hojaPrincipal.getLastRow();
+      hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosPrincipal.length).setValues(filasNuevas);
+
+      propiedades.setProperty('ULTIMA_SINCRONIZACION', new Date().toLocaleString('es-ES'));
+      propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS', filasNuevas.length.toString());
+
+      Logger.log(`Sincronización automática: ${filasNuevas.length} filas nuevas`);
+    } else {
+      Logger.log('Sincronización automática: sin datos nuevos');
+    }
+
+  } catch (error) {
+    Logger.log('Error en sincronización automática: ' + error.message);
+  }
+}
+
+/**
+ * Activa la sincronización automática
+ */
+function activarSincronizacionAutomatica() {
+  const ui = SpreadsheetApp.getUi();
+  const propiedades = PropertiesService.getScriptProperties();
+  const nombreHojaPrincipal = propiedades.getProperty('HOJA_PRINCIPAL');
+
+  if (!nombreHojaPrincipal) {
+    ui.alert(
+      '⚠️ Configuración necesaria',
+      'Primero configura la hoja principal:\n\n' +
+      'KoboToolbox > ⚙️ Configurar > Configurar Hoja Principal',
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+
+  const respuesta = ui.prompt(
+    'Activar Sincronización Automática',
+    '¿Cada cuántas horas deseas sincronizar los datos?\n\n' +
+    'Recomendaciones:\n' +
+    '1 = Cada hora (muy frecuente)\n' +
+    '6 = Cada 6 horas (recomendado)\n' +
+    '12 = Cada 12 horas\n' +
+    '24 = Una vez al día\n\n' +
+    'Ingresa el número de horas:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (respuesta.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+
+  const horas = parseInt(respuesta.getResponseText().trim());
+
+  if (isNaN(horas) || horas < 1 || horas > 24) {
+    ui.alert('❌ Error', 'Ingresa un número válido entre 1 y 24', ui.ButtonSet.OK);
+    return;
+  }
+
+  try {
+    // Eliminar triggers existentes
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'sincronizarAutomatico') {
+        ScriptApp.deleteTrigger(trigger);
+      }
+    }
+
+    // Crear nuevo trigger
+    ScriptApp.newTrigger('sincronizarAutomatico')
+      .timeBased()
+      .everyHours(horas)
+      .create();
+
+    ui.alert(
+      '✅ Sincronización Activada',
+      `Los datos se sincronizarán automáticamente cada ${horas} hora(s) con "${nombreHojaPrincipal}".\n\n` +
+      `✓ Solo se agregarán datos NUEVOS\n` +
+      `✓ Las columnas coincidentes se mapearán automáticamente\n` +
+      `✓ Las columnas nuevas se agregarán al final`,
+      ui.ButtonSet.OK
+    );
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Desactiva la sincronización automática
+ */
+function desactivarSincronizacionAutomatica() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    let eliminados = 0;
+
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'sincronizarAutomatico') {
+        ScriptApp.deleteTrigger(trigger);
+        eliminados++;
+      }
+    }
+
+    if (eliminados > 0) {
+      ui.alert('✅ Desactivado', 'La sincronización automática ha sido desactivada', ui.ButtonSet.OK);
+    } else {
+      ui.alert('ℹ️ Información', 'No había sincronización automática activa', ui.ButtonSet.OK);
+    }
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Muestra el estado de la sincronización
+ */
+function verEstadoSincronizacion() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const propiedades = PropertiesService.getScriptProperties();
+    const nombreHojaPrincipal = propiedades.getProperty('HOJA_PRINCIPAL');
+    const ultimaSincronizacion = propiedades.getProperty('ULTIMA_SINCRONIZACION') || 'Nunca';
+    const ultimasFilas = propiedades.getProperty('ULTIMA_SINCRONIZACION_FILAS') || '0';
+
+    const triggers = ScriptApp.getProjectTriggers();
+    let triggerActivo = null;
+
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'sincronizarAutomatico') {
+        triggerActivo = trigger;
+        break;
+      }
+    }
+
+    let mensaje = `Hoja principal: ${nombreHojaPrincipal || 'No configurada'}\n`;
+    mensaje += `Última sincronización: ${ultimaSincronizacion}\n`;
+    mensaje += `Filas agregadas: ${ultimasFilas}\n\n`;
+
+    if (triggerActivo) {
+      mensaje += '✅ Estado: ACTIVA\n\n';
+      mensaje += 'La sincronización automática está funcionando.';
+    } else {
+      mensaje += '⚠️ Estado: INACTIVA\n\n';
+      mensaje += 'Para activar:\nKoboToolbox > ⚙️ Configurar > Activar Sincronización Automática';
+    }
+
+    ui.alert('Estado de Sincronización', mensaje, ui.ButtonSet.OK);
 
   } catch (error) {
     ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
