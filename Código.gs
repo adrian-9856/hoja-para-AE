@@ -120,6 +120,46 @@ function obtenerExportSettingsId(apiToken, assetId) {
 }
 
 /**
+ * Parsea CSV manualmente cuando Utilities.parseCsv falla
+ * @param {string} csv - Contenido CSV a parsear
+ * @returns {Array} Array bidimensional con los datos
+ */
+function parsearCSVManual(csv) {
+  // Separar por líneas
+  const lineas = csv.split(/\r?\n/);
+  const datos = [];
+
+  for (let i = 0; i < lineas.length; i++) {
+    const linea = lineas[i].trim();
+
+    // Saltar líneas vacías
+    if (linea.length === 0) {
+      continue;
+    }
+
+    // Dividir por comas (manejo simple)
+    // Nota: esto no maneja campos con comas dentro de comillas
+    const campos = linea.split(',');
+
+    // Limpiar campos (quitar comillas si existen)
+    const camposLimpios = campos.map(campo => {
+      campo = campo.trim();
+      // Quitar comillas dobles al inicio y final
+      if (campo.startsWith('"') && campo.endsWith('"')) {
+        campo = campo.substring(1, campo.length - 1);
+      }
+      // Reemplazar comillas dobles escapadas
+      campo = campo.replace(/""/g, '"');
+      return campo;
+    });
+
+    datos.push(camposLimpios);
+  }
+
+  return datos;
+}
+
+/**
  * Importa datos CSV desde KoboToolbox a la hoja "DatosKobo"
  * Usa la URL directa de export-settings configurada
  */
@@ -140,12 +180,43 @@ function importarCSVdesdeKobo() {
     // Obtener el contenido CSV
     const csv = response.getContentText();
 
-    // Parsear el CSV (KoboToolbox usa coma como separador por defecto)
-    const datos = Utilities.parseCsv(csv);
+    // Validar que hay contenido
+    if (!csv || csv.trim().length === 0) {
+      throw new Error('No se recibieron datos desde KoboToolbox. El formulario podría estar vacío.');
+    }
+
+    // Log para debugging (se puede ver en Apps Script > Ejecuciones)
+    Logger.log('CSV recibido, primeros 200 caracteres: ' + csv.substring(0, 200));
+
+    // Parsear el CSV - intentar con diferentes métodos
+    let datos;
+    try {
+      datos = Utilities.parseCsv(csv);
+    } catch (parseError) {
+      // Si falla el parseo estándar, intentar parsearlo manualmente
+      Logger.log('Error al parsear CSV con Utilities.parseCsv, intentando parseo manual: ' + parseError);
+      datos = parsearCSVManual(csv);
+    }
 
     if (datos.length === 0) {
       SpreadsheetApp.getUi().alert('No se encontraron datos en el formulario de KoboToolbox');
       return;
+    }
+
+    // Validar que la primera fila tenga datos
+    if (!datos[0] || datos[0].length === 0) {
+      throw new Error('Los datos recibidos no tienen el formato correcto. Primera fila vacía.');
+    }
+
+    // Normalizar los datos: asegurarse que todas las filas tengan el mismo número de columnas
+    const numColumnas = datos[0].length;
+    for (let i = 0; i < datos.length; i++) {
+      while (datos[i].length < numColumnas) {
+        datos[i].push(''); // Agregar celdas vacías si faltan
+      }
+      if (datos[i].length > numColumnas) {
+        datos[i] = datos[i].slice(0, numColumnas); // Recortar si hay más columnas
+      }
     }
 
     // Obtener o crear la hoja de destino
@@ -160,7 +231,7 @@ function importarCSVdesdeKobo() {
     hoja.clearContents();
 
     // Escribir los datos
-    hoja.getRange(1, 1, datos.length, datos[0].length).setValues(datos);
+    hoja.getRange(1, 1, datos.length, numColumnas).setValues(datos);
 
     // Formatear la primera fila como encabezado
     const encabezado = hoja.getRange(1, 1, 1, datos[0].length);
