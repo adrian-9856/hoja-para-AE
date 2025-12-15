@@ -1,11 +1,13 @@
 /**
  * Script para importar datos CSV desde KoboToolbox a Google Sheets
  *
- * CONFIGURACIÓN NECESARIA:
- * 1. Obtén tu API Token desde: https://kf.kobotoolbox.org/token/
- * 2. Configura las propiedades del script con tu token y asset ID
- * 3. Ejecuta configurarCredenciales() una vez para guardar la configuración
+ * CONFIGURACIÓN:
+ * La URL de exportación ya está configurada para acceso directo.
+ * Solo necesitas usar el menú KoboToolbox > Importar Datos
  */
+
+// URL directa de exportación de KoboToolbox (configurada para este proyecto)
+const KOBO_EXPORT_URL = "https://kf.kobotoolbox.org/api/v2/assets/an6ckBVY2QRQPhTdKiEfcF/export-settings/esqz6vy4DwctQCtVEhsSZqw/data.csv";
 
 /**
  * Función para configurar las credenciales de KoboToolbox
@@ -119,52 +121,20 @@ function obtenerExportSettingsId(apiToken, assetId) {
 
 /**
  * Importa datos CSV desde KoboToolbox a la hoja "DatosKobo"
- * Usa la API v2 de KoboToolbox con autenticación y export-settings
+ * Usa la URL directa de export-settings configurada
  */
 function importarCSVdesdeKobo() {
   try {
-    // Obtener credenciales guardadas
-    const propiedades = PropertiesService.getScriptProperties();
-    const apiToken = propiedades.getProperty('KOBO_API_TOKEN');
-    const assetId = propiedades.getProperty('KOBO_ASSET_ID');
-    const exportSettingsId = propiedades.getProperty('KOBO_EXPORT_SETTINGS_ID');
-
-    // Validar que existan las credenciales
-    if (!apiToken || !assetId) {
-      SpreadsheetApp.getUi().alert(
-        'Error de configuración',
-        'Por favor ejecuta primero la función "configurarCredenciales" para configurar tu API Token y Asset ID.',
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-      return;
-    }
-
-    // Construir la URL de la API de KoboToolbox
-    let url;
-    if (exportSettingsId) {
-      // Usar el endpoint de export-settings (recomendado)
-      url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/export-settings/${exportSettingsId}/data.csv`;
-    } else {
-      // Fallback al endpoint directo
-      url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/data/?format=csv`;
-    }
-
-    // Configurar la petición con autenticación
-    const opciones = {
-      method: 'get',
-      headers: {
-        'Authorization': `Token ${apiToken}`
-      },
+    // Realizar la petición a la URL directa (no requiere autenticación)
+    const response = UrlFetchApp.fetch(KOBO_EXPORT_URL, {
       muteHttpExceptions: true
-    };
+    });
 
-    // Realizar la petición
-    const response = UrlFetchApp.fetch(url, opciones);
     const statusCode = response.getResponseCode();
 
     // Verificar el código de respuesta
     if (statusCode !== 200) {
-      throw new Error(`Error en la API de KoboToolbox (código ${statusCode}): ${response.getContentText()}`);
+      throw new Error(`Error al obtener datos de KoboToolbox (código ${statusCode}): ${response.getContentText()}`);
     }
 
     // Obtener el contenido CSV
@@ -279,18 +249,15 @@ function importarCSVconSeparadorPersonalizado(separador) {
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('KoboToolbox')
-    .addSubMenu(ui.createMenu('⚙️ Configuración')
-      .addItem('Configurar Credenciales', 'configurarCredenciales')
-      .addItem('Configurar Export Settings', 'configurarExportSettings')
-      .addItem('Verificar Conexión', 'verificarConexion'))
-    .addSeparator()
-    .addSubMenu(ui.createMenu('📥 Importar')
-      .addItem('Importar Datos', 'importarCSVdesdeKobo')
-      .addItem('Importar con separador ;', 'importarConPuntoComa'))
+    .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
     .addSeparator()
     .addSubMenu(ui.createMenu('📤 Enviar a Otra Hoja')
       .addItem('Copiar Todos los Datos', 'enviarDatosAOtraHoja')
       .addItem('Copiar Columnas Específicas', 'copiarColumnasEspecificas'))
+    .addSeparator()
+    .addSubMenu(ui.createMenu('⚙️ Avanzado')
+      .addItem('Configurar Credenciales (opcional)', 'configurarCredenciales')
+      .addItem('Verificar Conexión', 'verificarConexion'))
     .addToUi();
 }
 
