@@ -1,159 +1,98 @@
 /**
  * Script para importar datos CSV desde KoboToolbox a Google Sheets
- *
- * CONFIGURACIÓN:
- * La URL de exportación ya está configurada para acceso directo.
- * Solo necesitas usar el menú KoboToolbox > Importar Datos
+ * Versión simplificada y optimizada
  */
 
-// URL directa de exportación de KoboToolbox (configurada para este proyecto)
+// URL directa de exportación de KoboToolbox
 const KOBO_EXPORT_URL = "https://kf.kobotoolbox.org/api/v2/assets/an6ckBVY2QRQPhTdKiEfcF/export-settings/esqz6vy4DwctQCtVEhsSZqw/data.csv";
 
 /**
- * Función para configurar las credenciales de KoboToolbox
- * Ejecuta esta función una sola vez para guardar tu API Token y Asset ID
+ * Crea el menú personalizado al abrir la hoja
  */
-function configurarCredenciales() {
+function onOpen() {
   const ui = SpreadsheetApp.getUi();
-
-  // Solicitar API Token
-  const tokenResponse = ui.prompt(
-    'Configuración de KoboToolbox',
-    'Ingresa tu API Token de KoboToolbox (obtenerlo desde https://kf.kobotoolbox.org/token/):',
-    ui.ButtonSet.OK_CANCEL
-  );
-
-  if (tokenResponse.getSelectedButton() !== ui.Button.OK) {
-    ui.alert('Configuración cancelada');
-    return;
-  }
-
-  const apiToken = tokenResponse.getResponseText().trim();
-
-  // Solicitar Asset ID
-  const assetResponse = ui.prompt(
-    'Configuración de KoboToolbox',
-    'Ingresa el ID de tu formulario (Asset ID):',
-    ui.ButtonSet.OK_CANCEL
-  );
-
-  if (assetResponse.getSelectedButton() !== ui.Button.OK) {
-    ui.alert('Configuración cancelada');
-    return;
-  }
-
-  const assetId = assetResponse.getResponseText().trim();
-
-  // Guardar en propiedades del script
-  const propiedades = PropertiesService.getScriptProperties();
-  propiedades.setProperty('KOBO_API_TOKEN', apiToken);
-  propiedades.setProperty('KOBO_ASSET_ID', assetId);
-
-  // Intentar obtener el export-settings ID automáticamente
-  try {
-    const exportSettingsId = obtenerExportSettingsId(apiToken, assetId);
-    if (exportSettingsId) {
-      propiedades.setProperty('KOBO_EXPORT_SETTINGS_ID', exportSettingsId);
-      ui.alert('Configuración guardada correctamente. Export Settings ID obtenido automáticamente. Ahora puedes usar la función importarCSVdesdeKobo()');
-    } else {
-      ui.alert('Configuración guardada. No se pudo obtener Export Settings ID automáticamente. Puedes configurarlo manualmente con configurarExportSettings()');
-    }
-  } catch (error) {
-    ui.alert('Configuración guardada. Puedes configurar Export Settings ID manualmente con configurarExportSettings()');
-  }
+  ui.createMenu('KoboToolbox')
+    .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('📤 Copiar a Otra Hoja')
+      .addItem('Copiar Todos los Datos', 'enviarDatosAOtraHoja')
+      .addItem('Copiar Columnas Específicas', 'copiarColumnasEspecificas'))
+    .addToUi();
 }
 
 /**
- * Función para configurar manualmente el Export Settings ID
+ * Parsea CSV correctamente manejando campos con comillas y comas
  */
-function configurarExportSettings() {
-  const ui = SpreadsheetApp.getUi();
+function parsearCSV(texto) {
+  const filas = [];
+  let filaActual = [];
+  let campoActual = '';
+  let dentroDeComillas = false;
 
-  const exportResponse = ui.prompt(
-    'Configuración de Export Settings',
-    'Ingresa el Export Settings ID (lo encuentras en la URL de export-settings):',
-    ui.ButtonSet.OK_CANCEL
-  );
+  for (let i = 0; i < texto.length; i++) {
+    const char = texto[i];
+    const siguiente = texto[i + 1];
 
-  if (exportResponse.getSelectedButton() !== ui.Button.OK) {
-    ui.alert('Configuración cancelada');
-    return;
-  }
-
-  const exportSettingsId = exportResponse.getResponseText().trim();
-
-  const propiedades = PropertiesService.getScriptProperties();
-  propiedades.setProperty('KOBO_EXPORT_SETTINGS_ID', exportSettingsId);
-
-  ui.alert('Export Settings ID guardado correctamente');
-}
-
-/**
- * Obtiene automáticamente el Export Settings ID desde la API
- */
-function obtenerExportSettingsId(apiToken, assetId) {
-  const url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/export-settings/`;
-
-  const opciones = {
-    method: 'get',
-    headers: {
-      'Authorization': `Token ${apiToken}`
-    },
-    muteHttpExceptions: true
-  };
-
-  const response = UrlFetchApp.fetch(url, opciones);
-
-  if (response.getResponseCode() === 200) {
-    const data = JSON.parse(response.getContentText());
-    // Buscar el primer export-settings que tenga data_url_csv
-    if (data.results && data.results.length > 0) {
-      for (let exportSetting of data.results) {
-        if (exportSetting.data_url_csv) {
-          return exportSetting.uid;
+    if (char === '"') {
+      if (dentroDeComillas && siguiente === '"') {
+        // Comillas dobles escapadas
+        campoActual += '"';
+        i++; // Saltar la siguiente comilla
+      } else {
+        // Alternar estado de comillas
+        dentroDeComillas = !dentroDeComillas;
+      }
+    } else if (char === ',' && !dentroDeComillas) {
+      // Fin de campo
+      filaActual.push(campoActual);
+      campoActual = '';
+    } else if ((char === '\n' || char === '\r') && !dentroDeComillas) {
+      // Fin de fila
+      if (char === '\r' && siguiente === '\n') {
+        i++; // Saltar \n en \r\n
+      }
+      if (campoActual || filaActual.length > 0) {
+        filaActual.push(campoActual);
+        if (filaActual.some(campo => campo.trim() !== '')) {
+          filas.push(filaActual);
         }
+        filaActual = [];
+        campoActual = '';
       }
+    } else {
+      // Agregar carácter al campo actual
+      campoActual += char;
     }
   }
 
-  return null;
+  // Agregar última fila si existe
+  if (campoActual || filaActual.length > 0) {
+    filaActual.push(campoActual);
+    if (filaActual.some(campo => campo.trim() !== '')) {
+      filas.push(filaActual);
+    }
+  }
+
+  return filas;
 }
 
 /**
- * Parsea CSV manualmente cuando Utilities.parseCsv falla
- * @param {string} csv - Contenido CSV a parsear
- * @returns {Array} Array bidimensional con los datos
+ * Normaliza los datos para que todas las filas tengan el mismo número de columnas
  */
-function parsearCSVManual(csv) {
-  // Separar por líneas
-  const lineas = csv.split(/\r?\n/);
-  const datos = [];
+function normalizarDatos(datos) {
+  if (datos.length === 0) return datos;
 
-  for (let i = 0; i < lineas.length; i++) {
-    const linea = lineas[i].trim();
+  const numColumnas = datos[0].length;
 
-    // Saltar líneas vacías
-    if (linea.length === 0) {
-      continue;
+  for (let i = 0; i < datos.length; i++) {
+    // Agregar columnas vacías si faltan
+    while (datos[i].length < numColumnas) {
+      datos[i].push('');
     }
-
-    // Dividir por comas (manejo simple)
-    // Nota: esto no maneja campos con comas dentro de comillas
-    const campos = linea.split(',');
-
-    // Limpiar campos (quitar comillas si existen)
-    const camposLimpios = campos.map(campo => {
-      campo = campo.trim();
-      // Quitar comillas dobles al inicio y final
-      if (campo.startsWith('"') && campo.endsWith('"')) {
-        campo = campo.substring(1, campo.length - 1);
-      }
-      // Reemplazar comillas dobles escapadas
-      campo = campo.replace(/""/g, '"');
-      return campo;
-    });
-
-    datos.push(camposLimpios);
+    // Recortar si hay más columnas
+    if (datos[i].length > numColumnas) {
+      datos[i] = datos[i].slice(0, numColumnas);
+    }
   }
 
   return datos;
@@ -161,65 +100,52 @@ function parsearCSVManual(csv) {
 
 /**
  * Importa datos CSV desde KoboToolbox a la hoja "DatosKobo"
- * Usa la URL directa de export-settings configurada
  */
 function importarCSVdesdeKobo() {
   try {
-    // Realizar la petición a la URL directa (no requiere autenticación)
+    const ui = SpreadsheetApp.getUi();
+
+    // Mostrar mensaje de carga
+    ui.alert('Importando datos', 'Por favor espera mientras se descargan los datos...', ui.ButtonSet.OK);
+
+    // Descargar CSV
     const response = UrlFetchApp.fetch(KOBO_EXPORT_URL, {
       muteHttpExceptions: true
     });
 
     const statusCode = response.getResponseCode();
 
-    // Verificar el código de respuesta
     if (statusCode !== 200) {
-      throw new Error(`Error al obtener datos de KoboToolbox (código ${statusCode}): ${response.getContentText()}`);
+      throw new Error(`Error al conectar con KoboToolbox (código ${statusCode})`);
     }
 
-    // Obtener el contenido CSV
     const csv = response.getContentText();
 
-    // Validar que hay contenido
     if (!csv || csv.trim().length === 0) {
-      throw new Error('No se recibieron datos desde KoboToolbox. El formulario podría estar vacío.');
+      throw new Error('No se recibieron datos. El formulario podría estar vacío.');
     }
 
-    // Log para debugging (se puede ver en Apps Script > Ejecuciones)
-    Logger.log('CSV recibido, primeros 200 caracteres: ' + csv.substring(0, 200));
+    Logger.log('CSV descargado correctamente. Tamaño: ' + csv.length + ' caracteres');
 
-    // Parsear el CSV - intentar con diferentes métodos
+    // Parsear CSV
     let datos;
     try {
       datos = Utilities.parseCsv(csv);
-    } catch (parseError) {
-      // Si falla el parseo estándar, intentar parsearlo manualmente
-      Logger.log('Error al parsear CSV con Utilities.parseCsv, intentando parseo manual: ' + parseError);
-      datos = parsearCSVManual(csv);
+    } catch (e) {
+      Logger.log('Utilities.parseCsv falló, usando parser personalizado');
+      datos = parsearCSV(csv);
     }
 
-    if (datos.length === 0) {
-      SpreadsheetApp.getUi().alert('No se encontraron datos en el formulario de KoboToolbox');
-      return;
+    if (!datos || datos.length === 0) {
+      throw new Error('No se encontraron datos para importar');
     }
 
-    // Validar que la primera fila tenga datos
-    if (!datos[0] || datos[0].length === 0) {
-      throw new Error('Los datos recibidos no tienen el formato correcto. Primera fila vacía.');
-    }
+    // Normalizar datos
+    datos = normalizarDatos(datos);
 
-    // Normalizar los datos: asegurarse que todas las filas tengan el mismo número de columnas
-    const numColumnas = datos[0].length;
-    for (let i = 0; i < datos.length; i++) {
-      while (datos[i].length < numColumnas) {
-        datos[i].push(''); // Agregar celdas vacías si faltan
-      }
-      if (datos[i].length > numColumnas) {
-        datos[i] = datos[i].slice(0, numColumnas); // Recortar si hay más columnas
-      }
-    }
+    Logger.log(`Datos parseados: ${datos.length} filas, ${datos[0].length} columnas`);
 
-    // Obtener o crear la hoja de destino
+    // Obtener o crear la hoja
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     let hoja = spreadsheet.getSheetByName("DatosKobo");
 
@@ -227,127 +153,66 @@ function importarCSVdesdeKobo() {
       hoja = spreadsheet.insertSheet("DatosKobo");
     }
 
-    // Limpiar contenido anterior
-    hoja.clearContents();
+    // Limpiar hoja
+    hoja.clear();
 
-    // Escribir los datos
-    hoja.getRange(1, 1, datos.length, numColumnas).setValues(datos);
+    // Escribir datos
+    const numFilas = datos.length;
+    const numColumnas = datos[0].length;
 
-    // Formatear la primera fila como encabezado
-    const encabezado = hoja.getRange(1, 1, 1, datos[0].length);
-    encabezado.setFontWeight('bold');
-    encabezado.setBackground('#4285f4');
-    encabezado.setFontColor('#ffffff');
+    hoja.getRange(1, 1, numFilas, numColumnas).setValues(datos);
+
+    // Formatear encabezado
+    const rangoEncabezado = hoja.getRange(1, 1, 1, numColumnas);
+    rangoEncabezado.setFontWeight('bold');
+    rangoEncabezado.setBackground('#4285f4');
+    rangoEncabezado.setFontColor('#ffffff');
+    rangoEncabezado.setWrap(true);
+    rangoEncabezado.setVerticalAlignment('middle');
+
+    // Ajustar altura de encabezado
+    hoja.setRowHeight(1, 60);
 
     // Autoajustar columnas
-    for (let i = 1; i <= datos[0].length; i++) {
+    for (let i = 1; i <= numColumnas; i++) {
       hoja.autoResizeColumn(i);
+      // Limitar ancho máximo de columna
+      const anchoActual = hoja.getColumnWidth(i);
+      if (anchoActual > 300) {
+        hoja.setColumnWidth(i, 300);
+      }
     }
 
-    // Congelar la primera fila
+    // Congelar primera fila
     hoja.setFrozenRows(1);
 
-    SpreadsheetApp.getUi().alert(`Importación exitosa: ${datos.length - 1} registros importados`);
+    // Activar la hoja
+    spreadsheet.setActiveSheet(hoja);
+
+    ui.alert(
+      '✅ Importación exitosa',
+      `Se importaron ${numFilas - 1} registros con ${numColumnas} columnas`,
+      ui.ButtonSet.OK
+    );
 
   } catch (error) {
-    SpreadsheetApp.getUi().alert('Error al importar datos: ' + error.message);
+    SpreadsheetApp.getUi().alert(
+      '❌ Error',
+      'Error al importar: ' + error.message,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
     Logger.log('Error detallado: ' + error.stack);
   }
 }
 
 /**
- * Importa datos usando un separador personalizado (para casos especiales)
- * @param {string} separador - El separador a usar (por defecto ',')
- */
-function importarCSVconSeparadorPersonalizado(separador) {
-  separador = separador || ';';
-
-  try {
-    const propiedades = PropertiesService.getScriptProperties();
-    const apiToken = propiedades.getProperty('KOBO_API_TOKEN');
-    const assetId = propiedades.getProperty('KOBO_ASSET_ID');
-    const exportSettingsId = propiedades.getProperty('KOBO_EXPORT_SETTINGS_ID');
-
-    if (!apiToken || !assetId) {
-      throw new Error('Configuración no encontrada. Ejecuta configurarCredenciales() primero.');
-    }
-
-    let url;
-    if (exportSettingsId) {
-      url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/export-settings/${exportSettingsId}/data.csv`;
-    } else {
-      url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/data/?format=csv`;
-    }
-
-    const opciones = {
-      method: 'get',
-      headers: {
-        'Authorization': `Token ${apiToken}`
-      },
-      muteHttpExceptions: true
-    };
-
-    const response = UrlFetchApp.fetch(url, opciones);
-
-    if (response.getResponseCode() !== 200) {
-      throw new Error(`Error ${response.getResponseCode()}: ${response.getContentText()}`);
-    }
-
-    const csv = response.getContentText();
-    const datos = Utilities.parseCsv(csv, separador);
-
-    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    let hoja = spreadsheet.getSheetByName("DatosKobo");
-
-    if (!hoja) {
-      hoja = spreadsheet.insertSheet("DatosKobo");
-    }
-
-    hoja.clearContents();
-    hoja.getRange(1, 1, datos.length, datos[0].length).setValues(datos);
-
-    SpreadsheetApp.getUi().alert(`Importación exitosa con separador '${separador}': ${datos.length - 1} registros`);
-
-  } catch (error) {
-    SpreadsheetApp.getUi().alert('Error: ' + error.message);
-    Logger.log(error.stack);
-  }
-}
-
-/**
- * Crea un menú personalizado en Google Sheets
- */
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('KoboToolbox')
-    .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
-    .addSeparator()
-    .addSubMenu(ui.createMenu('📤 Enviar a Otra Hoja')
-      .addItem('Copiar Todos los Datos', 'enviarDatosAOtraHoja')
-      .addItem('Copiar Columnas Específicas', 'copiarColumnasEspecificas'))
-    .addSeparator()
-    .addSubMenu(ui.createMenu('⚙️ Avanzado')
-      .addItem('Configurar Credenciales (opcional)', 'configurarCredenciales')
-      .addItem('Verificar Conexión', 'verificarConexion'))
-    .addToUi();
-}
-
-/**
- * Función auxiliar para importar con punto y coma
- */
-function importarConPuntoComa() {
-  importarCSVconSeparadorPersonalizado(';');
-}
-
-/**
- * Envía/copia datos de DatosKobo a otra hoja
+ * Copia todos los datos de DatosKobo a otra hoja
  */
 function enviarDatosAOtraHoja() {
   const ui = SpreadsheetApp.getUi();
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
   try {
-    // Verificar que existe la hoja DatosKobo
     const hojaOrigen = spreadsheet.getSheetByName("DatosKobo");
 
     if (!hojaOrigen) {
@@ -355,7 +220,6 @@ function enviarDatosAOtraHoja() {
       return;
     }
 
-    // Obtener datos de la hoja origen
     const datosOrigen = hojaOrigen.getDataRange().getValues();
 
     if (datosOrigen.length === 0) {
@@ -363,10 +227,10 @@ function enviarDatosAOtraHoja() {
       return;
     }
 
-    // Preguntar el nombre de la hoja destino
+    // Preguntar nombre de hoja destino
     const respuesta = ui.prompt(
-      'Enviar datos a otra hoja',
-      'Ingresa el nombre de la hoja destino (se creará si no existe):',
+      'Nombre de la hoja destino',
+      'Ingresa el nombre de la nueva hoja:',
       ui.ButtonSet.OK_CANCEL
     );
 
@@ -374,74 +238,57 @@ function enviarDatosAOtraHoja() {
       return;
     }
 
-    const nombreHojaDestino = respuesta.getResponseText().trim();
+    const nombreHoja = respuesta.getResponseText().trim();
 
-    if (!nombreHojaDestino) {
-      ui.alert('Error', 'Debes ingresar un nombre válido para la hoja.', ui.ButtonSet.OK);
+    if (!nombreHoja) {
+      ui.alert('Error', 'Debes ingresar un nombre válido.', ui.ButtonSet.OK);
       return;
     }
 
-    // Obtener o crear la hoja destino
-    let hojaDestino = spreadsheet.getSheetByName(nombreHojaDestino);
+    // Crear o limpiar hoja destino
+    let hojaDestino = spreadsheet.getSheetByName(nombreHoja);
 
-    if (!hojaDestino) {
-      hojaDestino = spreadsheet.insertSheet(nombreHojaDestino);
-    }
+    if (hojaDestino) {
+      const confirmar = ui.alert(
+        'Hoja existe',
+        `La hoja "${nombreHoja}" ya existe. ¿Deseas reemplazar su contenido?`,
+        ui.ButtonSet.YES_NO
+      );
 
-    // Preguntar si desea limpiar o agregar
-    const tipoEnvio = ui.alert(
-      'Tipo de envío',
-      '¿Deseas REEMPLAZAR los datos existentes o AGREGAR al final?',
-      ui.ButtonSet.YES_NO_CANCEL
-    );
-
-    let filaInicio = 1;
-
-    if (tipoEnvio === ui.Button.YES) {
-      // Reemplazar - limpiar hoja
-      hojaDestino.clearContents();
-    } else if (tipoEnvio === ui.Button.NO) {
-      // Agregar - encontrar última fila
-      filaInicio = hojaDestino.getLastRow() + 1;
-
-      // Si la hoja está vacía o solo tiene encabezados, incluir encabezados
-      if (filaInicio === 1) {
-        // Incluir encabezados
-      } else {
-        // No incluir encabezados, solo datos
-        const datosSinEncabezado = datosOrigen.slice(1);
-        hojaDestino.getRange(filaInicio, 1, datosSinEncabezado.length, datosSinEncabezado[0].length).setValues(datosSinEncabezado);
-
-        ui.alert('Éxito', `${datosSinEncabezado.length} filas agregadas a "${nombreHojaDestino}"`, ui.ButtonSet.OK);
+      if (confirmar !== ui.Button.YES) {
         return;
       }
+
+      hojaDestino.clear();
     } else {
-      return; // Cancelado
+      hojaDestino = spreadsheet.insertSheet(nombreHoja);
     }
 
-    // Escribir los datos
-    hojaDestino.getRange(filaInicio, 1, datosOrigen.length, datosOrigen[0].length).setValues(datosOrigen);
+    // Copiar datos
+    const numFilas = datosOrigen.length;
+    const numColumnas = datosOrigen[0].length;
 
-    // Formatear encabezado si es la primera fila
-    if (filaInicio === 1) {
-      const encabezado = hojaDestino.getRange(1, 1, 1, datosOrigen[0].length);
-      encabezado.setFontWeight('bold');
-      encabezado.setBackground('#34A853');
-      encabezado.setFontColor('#ffffff');
+    hojaDestino.getRange(1, 1, numFilas, numColumnas).setValues(datosOrigen);
 
-      // Autoajustar columnas
-      for (let i = 1; i <= datosOrigen[0].length; i++) {
-        hojaDestino.autoResizeColumn(i);
-      }
+    // Formatear encabezado
+    const encabezado = hojaDestino.getRange(1, 1, 1, numColumnas);
+    encabezado.setFontWeight('bold');
+    encabezado.setBackground('#34A853');
+    encabezado.setFontColor('#ffffff');
+    encabezado.setWrap(true);
 
-      hojaDestino.setFrozenRows(1);
+    // Ajustar columnas
+    for (let i = 1; i <= numColumnas; i++) {
+      hojaDestino.autoResizeColumn(i);
     }
 
-    ui.alert('Éxito', `${datosOrigen.length - 1} filas copiadas a "${nombreHojaDestino}"`, ui.ButtonSet.OK);
+    hojaDestino.setFrozenRows(1);
+
+    ui.alert('✅ Éxito', `${numFilas - 1} filas copiadas a "${nombreHoja}"`, ui.ButtonSet.OK);
 
   } catch (error) {
-    ui.alert('Error', 'Error al enviar datos: ' + error.message, ui.ButtonSet.OK);
-    Logger.log('Error detallado: ' + error.stack);
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+    Logger.log('Error: ' + error.stack);
   }
 }
 
@@ -467,16 +314,22 @@ function copiarColumnasEspecificas() {
       return;
     }
 
-    // Mostrar columnas disponibles
+    // Mostrar columnas
     const encabezados = datosOrigen[0];
     let mensaje = 'Columnas disponibles:\n\n';
-    encabezados.forEach((col, index) => {
-      mensaje += `${index + 1}. ${col}\n`;
-    });
+
+    for (let i = 0; i < encabezados.length && i < 30; i++) {
+      const nombre = encabezados[i].toString().substring(0, 40);
+      mensaje += `${i + 1}. ${nombre}\n`;
+    }
+
+    if (encabezados.length > 30) {
+      mensaje += `\n... y ${encabezados.length - 30} columnas más`;
+    }
 
     const respuesta = ui.prompt(
       'Seleccionar columnas',
-      mensaje + '\nIngresa los números de columnas separados por comas (ej: 1,3,5):',
+      mensaje + '\n\nIngresa los números separados por comas (ej: 1,3,5):',
       ui.ButtonSet.OK_CANCEL
     );
 
@@ -484,20 +337,20 @@ function copiarColumnasEspecificas() {
       return;
     }
 
-    // Parsear columnas seleccionadas
+    // Parsear columnas
     const columnasTexto = respuesta.getResponseText().trim();
     const columnasSeleccionadas = columnasTexto.split(',').map(num => parseInt(num.trim()) - 1);
 
-    // Validar columnas
-    if (columnasSeleccionadas.some(col => col < 0 || col >= encabezados.length || isNaN(col))) {
-      ui.alert('Error', 'Columnas inválidas. Verifica los números ingresados.', ui.ButtonSet.OK);
+    // Validar
+    if (columnasSeleccionadas.some(col => isNaN(col) || col < 0 || col >= encabezados.length)) {
+      ui.alert('Error', 'Columnas inválidas. Verifica los números.', ui.ButtonSet.OK);
       return;
     }
 
-    // Preguntar nombre de hoja destino
+    // Preguntar nombre de hoja
     const respuestaNombre = ui.prompt(
-      'Nombre de hoja destino',
-      'Ingresa el nombre de la hoja destino:',
+      'Nombre de hoja',
+      'Ingresa el nombre de la nueva hoja:',
       ui.ButtonSet.OK_CANCEL
     );
 
@@ -505,30 +358,31 @@ function copiarColumnasEspecificas() {
       return;
     }
 
-    const nombreHojaDestino = respuestaNombre.getResponseText().trim();
+    const nombreHoja = respuestaNombre.getResponseText().trim();
 
-    // Crear o obtener hoja destino
-    let hojaDestino = spreadsheet.getSheetByName(nombreHojaDestino);
+    // Crear hoja
+    let hojaDestino = spreadsheet.getSheetByName(nombreHoja);
 
-    if (!hojaDestino) {
-      hojaDestino = spreadsheet.insertSheet(nombreHojaDestino);
+    if (hojaDestino) {
+      hojaDestino.clear();
     } else {
-      hojaDestino.clearContents();
+      hojaDestino = spreadsheet.insertSheet(nombreHoja);
     }
 
-    // Extraer solo las columnas seleccionadas
-    const datosNuevos = datosOrigen.map(fila => {
-      return columnasSeleccionadas.map(colIndex => fila[colIndex]);
-    });
+    // Extraer columnas seleccionadas
+    const datosNuevos = datosOrigen.map(fila =>
+      columnasSeleccionadas.map(idx => fila[idx])
+    );
 
     // Escribir datos
     hojaDestino.getRange(1, 1, datosNuevos.length, datosNuevos[0].length).setValues(datosNuevos);
 
-    // Formatear encabezado
+    // Formatear
     const encabezado = hojaDestino.getRange(1, 1, 1, datosNuevos[0].length);
     encabezado.setFontWeight('bold');
     encabezado.setBackground('#34A853');
     encabezado.setFontColor('#ffffff');
+    encabezado.setWrap(true);
 
     for (let i = 1; i <= datosNuevos[0].length; i++) {
       hojaDestino.autoResizeColumn(i);
@@ -536,53 +390,10 @@ function copiarColumnasEspecificas() {
 
     hojaDestino.setFrozenRows(1);
 
-    ui.alert('Éxito', `${datosNuevos[0].length} columnas copiadas a "${nombreHojaDestino}"`, ui.ButtonSet.OK);
+    ui.alert('✅ Éxito', `${datosNuevos[0].length} columnas copiadas a "${nombreHoja}"`, ui.ButtonSet.OK);
 
   } catch (error) {
-    ui.alert('Error', error.message, ui.ButtonSet.OK);
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
     Logger.log('Error: ' + error.stack);
-  }
-}
-
-/**
- * Función para verificar la conexión con KoboToolbox
- */
-function verificarConexion() {
-  try {
-    const propiedades = PropertiesService.getScriptProperties();
-    const apiToken = propiedades.getProperty('KOBO_API_TOKEN');
-    const assetId = propiedades.getProperty('KOBO_ASSET_ID');
-
-    if (!apiToken || !assetId) {
-      SpreadsheetApp.getUi().alert('No hay credenciales configuradas');
-      return;
-    }
-
-    const url = `https://kf.kobotoolbox.org/api/v2/assets/${assetId}/`;
-
-    const opciones = {
-      method: 'get',
-      headers: {
-        'Authorization': `Token ${apiToken}`
-      },
-      muteHttpExceptions: true
-    };
-
-    const response = UrlFetchApp.fetch(url, opciones);
-    const statusCode = response.getResponseCode();
-
-    if (statusCode === 200) {
-      const data = JSON.parse(response.getContentText());
-      SpreadsheetApp.getUi().alert(
-        'Conexión exitosa',
-        `Formulario: ${data.name}\nRespuestas: ${data.deployment__submission_count}`,
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-    } else {
-      SpreadsheetApp.getUi().alert(`Error ${statusCode}: ${response.getContentText()}`);
-    }
-
-  } catch (error) {
-    SpreadsheetApp.getUi().alert('Error: ' + error.message);
   }
 }
