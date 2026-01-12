@@ -718,7 +718,10 @@ function mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal) {
     'servicio': 'servicio que solicita',
     'programa de creamos': 'programa de creamos / organización',
     'nombre de quien deriva': 'nombre de quien deriva o refiere',
-    'motivo de derivación u referencia': 'motivo de derivación u referencia'
+    'derivación o referencia': 'derivación o referencia',
+    'motivo de derivación u referencia': 'motivo de derivación u referencia',
+    'teléfono': 'teléfono',
+    'dirección': 'dirección'
   };
 
   // Mapear columnas normales
@@ -808,6 +811,18 @@ function sincronizarConHojaPrincipal() {
     Logger.log(`Columnas especiales: ${columnasEspeciales.length}`);
     Logger.log(`Columnas ignoradas: ${columnasIgnoradas.length}`);
 
+    // Log detallado del mapeo
+    Logger.log('=== MAPEO DE COLUMNAS ===');
+    mapeoColumnas.forEach(m => {
+      Logger.log(`  "${encabezadosOrigen[m.origen]}" → "${encabezadosPrincipal[m.principal]}"`);
+    });
+    columnasEspeciales.forEach(e => {
+      Logger.log(`  [ESPECIAL] ${e.nombre}`);
+    });
+    if (columnasIgnoradas.length > 0) {
+      Logger.log('Columnas ignoradas: ' + columnasIgnoradas.join(', '));
+    }
+
     // Detectar filas nuevas (usar teléfono como identificador único)
     const datosExistentes = new Set();
     const indiceTelefonoDestino = encabezadosPrincipal.findIndex(col =>
@@ -878,11 +893,26 @@ function sincronizarConHojaPrincipal() {
     propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS', filasNuevas.length.toString());
 
     let mensaje = `Se agregaron ${filasNuevas.length} filas nuevas a "${HOJA_DESTINO_NOMBRE}"\n\n`;
-    mensaje += `Columnas sincronizadas: ${mapeoColumnas.length}`;
+    mensaje += `✓ Columnas mapeadas: ${mapeoColumnas.length}\n`;
+    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n`;
+
+    // Mostrar mapeos especiales
+    if (columnasEspeciales.length > 0) {
+      mensaje += `\n📋 Mapeos especiales:\n`;
+      columnasEspeciales.forEach(e => {
+        mensaje += `  • ${e.nombre}\n`;
+      });
+    }
 
     if (columnasIgnoradas.length > 0) {
-      mensaje += `\n\n⚠️ Columnas ignoradas: ${columnasIgnoradas.length}\n`;
-      mensaje += `(Solo se sincronizan columnas que ya existen en la hoja destino)`;
+      mensaje += `\n⚠️ Columnas ignoradas: ${columnasIgnoradas.length}\n`;
+      mensaje += `(Estas columnas no existen en "Lista de Espera")\n`;
+      // Mostrar primeras 5 columnas ignoradas
+      const primerasIgnoradas = columnasIgnoradas.slice(0, 5);
+      primerasIgnoradas.forEach(col => mensaje += `  • ${col}\n`);
+      if (columnasIgnoradas.length > 5) {
+        mensaje += `  ... y ${columnasIgnoradas.length - 5} más`;
+      }
     }
 
     ui.alert('✅ Sincronización exitosa', mensaje, ui.ButtonSet.OK);
@@ -958,6 +988,18 @@ function sincronizacionInicial() {
     Logger.log(`Columnas especiales: ${columnasEspeciales.length}`);
     Logger.log(`Columnas ignoradas: ${columnasIgnoradas.length}`);
 
+    // Log detallado del mapeo
+    Logger.log('=== MAPEO DE COLUMNAS ===');
+    mapeoColumnas.forEach(m => {
+      Logger.log(`  "${encabezadosOrigen[m.origen]}" → "${encabezadosPrincipal[m.principal]}"`);
+    });
+    columnasEspeciales.forEach(e => {
+      Logger.log(`  [ESPECIAL] ${e.nombre}`);
+    });
+    if (columnasIgnoradas.length > 0) {
+      Logger.log('Columnas ignoradas: ' + columnasIgnoradas.join(', '));
+    }
+
     // Enviar TODAS las filas (sin verificar duplicados)
     const todasLasFilas = [];
 
@@ -1000,10 +1042,26 @@ function sincronizacionInicial() {
     propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS', todasLasFilas.length.toString());
 
     let mensaje = `✅ Se enviaron ${todasLasFilas.length} filas a "${HOJA_DESTINO_NOMBRE}"\n\n`;
-    mensaje += `Columnas sincronizadas: ${mapeoColumnas.length}`;
+    mensaje += `✓ Columnas mapeadas: ${mapeoColumnas.length}\n`;
+    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n`;
+
+    // Mostrar mapeos especiales
+    if (columnasEspeciales.length > 0) {
+      mensaje += `\n📋 Mapeos especiales:\n`;
+      columnasEspeciales.forEach(e => {
+        mensaje += `  • ${e.nombre}\n`;
+      });
+    }
 
     if (columnasIgnoradas.length > 0) {
-      mensaje += `\n\n⚠️ Columnas ignoradas: ${columnasIgnoradas.length}`;
+      mensaje += `\n⚠️ Columnas ignoradas: ${columnasIgnoradas.length}\n`;
+      mensaje += `(Estas columnas no existen en "Lista de Espera")\n`;
+      // Mostrar primeras 5 columnas ignoradas
+      const primerasIgnoradas = columnasIgnoradas.slice(0, 5);
+      primerasIgnoradas.forEach(col => mensaje += `  • ${col}\n`);
+      if (columnasIgnoradas.length > 5) {
+        mensaje += `  ... y ${columnasIgnoradas.length - 5} más`;
+      }
     }
 
     ui.alert('✅ Sincronización Inicial Completada', mensaje, ui.ButtonSet.OK);
