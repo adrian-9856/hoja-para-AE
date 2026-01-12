@@ -682,6 +682,81 @@ function verEstadoActualizacion() {
 
 
 /**
+ * Función auxiliar para mapear columnas con reglas especiales
+ * Maneja casos como combinar Nombres+Apellidos -> Nombre Completo
+ */
+function mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal) {
+  const mapeoColumnas = [];
+  const columnasIgnoradas = [];
+  const columnasEspeciales = [];
+
+  // Buscar índices de columnas especiales en origen
+  const indiceNombres = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'nombres'
+  );
+  const indiceApellidos = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'apellidos'
+  );
+
+  // Buscar índice de Nombre Completo en destino
+  const indiceNombreCompleto = encabezadosPrincipal.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'nombre completo'
+  );
+
+  // Si hay Nombres+Apellidos en origen y Nombre Completo en destino
+  if (indiceNombres >= 0 && indiceApellidos >= 0 && indiceNombreCompleto >= 0) {
+    columnasEspeciales.push({
+      tipo: 'combinar',
+      origenes: [indiceNombres, indiceApellidos],
+      destino: indiceNombreCompleto,
+      nombre: 'Nombres + Apellidos → Nombre Completo'
+    });
+  }
+
+  // Mapeo de columnas con nombres similares (case-insensitive y flexible)
+  const mapeosFlexibles = {
+    'servicio': 'servicio que solicita',
+    'programa de creamos': 'programa de creamos / organización',
+    'nombre de quien deriva': 'nombre de quien deriva o refiere',
+    'motivo de derivación u referencia': 'motivo de derivación u referencia'
+  };
+
+  // Mapear columnas normales
+  for (let i = 0; i < encabezadosOrigen.length; i++) {
+    const columnaOrigen = encabezadosOrigen[i].toString().trim().toLowerCase();
+
+    // Saltar Nombres y Apellidos si ya se mapearon a Nombre Completo
+    if ((i === indiceNombres || i === indiceApellidos) && indiceNombreCompleto >= 0) {
+      continue;
+    }
+
+    // Buscar coincidencia exacta
+    let indicePrincipal = encabezadosPrincipal.findIndex(col =>
+      col.toString().trim().toLowerCase() === columnaOrigen
+    );
+
+    // Si no hay coincidencia exacta, buscar en mapeos flexibles
+    if (indicePrincipal < 0 && mapeosFlexibles[columnaOrigen]) {
+      indicePrincipal = encabezadosPrincipal.findIndex(col =>
+        col.toString().trim().toLowerCase() === mapeosFlexibles[columnaOrigen]
+      );
+    }
+
+    if (indicePrincipal >= 0) {
+      mapeoColumnas.push({
+        origen: i,
+        principal: indicePrincipal,
+        nombre: encabezadosOrigen[i]
+      });
+    } else {
+      columnasIgnoradas.push(encabezadosOrigen[i]);
+    }
+  }
+
+  return { mapeoColumnas, columnasEspeciales, columnasIgnoradas };
+}
+
+/**
  * Sincroniza datos de DatosKobo con la hoja principal en archivo externo
  * Solo agrega filas nuevas y columnas que coinciden (las demás se ignoran)
  */
@@ -725,48 +800,57 @@ function sincronizarConHojaPrincipal() {
     const encabezadosOrigen = datosOrigen[0];
     const encabezadosPrincipal = datosPrincipal[0];
 
-    // Encontrar columnas coincidentes (solo mapear las que existen en destino)
-    const mapeoColumnas = [];
-    const columnasIgnoradas = [];
+    // Usar mapeo inteligente con reglas especiales
+    const { mapeoColumnas, columnasEspeciales, columnasIgnoradas } =
+      mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal);
 
-    for (let i = 0; i < encabezadosOrigen.length; i++) {
-      const columnaOrigen = encabezadosOrigen[i].toString().trim();
-      const indicePrincipal = encabezadosPrincipal.findIndex(col =>
-        col.toString().trim().toLowerCase() === columnaOrigen.toLowerCase()
-      );
-
-      if (indicePrincipal >= 0) {
-        mapeoColumnas.push({ origen: i, principal: indicePrincipal, nombre: columnaOrigen });
-      } else {
-        columnasIgnoradas.push(columnaOrigen);
-      }
-    }
-
-    Logger.log(`Columnas coincidentes: ${mapeoColumnas.length}`);
+    Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}`);
+    Logger.log(`Columnas especiales: ${columnasEspeciales.length}`);
     Logger.log(`Columnas ignoradas: ${columnasIgnoradas.length}`);
 
-    // Detectar filas nuevas (usar primeras 3 columnas como identificador)
+    // Detectar filas nuevas (usar teléfono como identificador único)
     const datosExistentes = new Set();
+    const indiceTelefonoDestino = encabezadosPrincipal.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'teléfono'
+    );
 
     for (let i = 1; i < datosPrincipal.length; i++) {
-      // Crear un identificador único combinando las primeras 3 columnas
-      const id = datosPrincipal[i].slice(0, 3).join('|');
-      datosExistentes.add(id);
+      if (indiceTelefonoDestino >= 0) {
+        const telefono = datosPrincipal[i][indiceTelefonoDestino];
+        if (telefono) {
+          datosExistentes.add(telefono.toString().trim());
+        }
+      }
     }
 
     // Filtrar solo filas nuevas
     const filasNuevas = [];
+    const indiceTelefonoOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'teléfono'
+    );
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
-      const id = filaOrigen.slice(0, 3).join('|');
 
-      if (!datosExistentes.has(id)) {
-        // Crear fila con datos mapeados (solo columnas que existen en destino)
+      // Verificar si es fila nueva usando teléfono
+      const telefono = indiceTelefonoOrigen >= 0 ? filaOrigen[indiceTelefonoOrigen] : '';
+      const esNueva = !telefono || !datosExistentes.has(telefono.toString().trim());
+
+      if (esNueva) {
+        // Crear fila con datos mapeados
         const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
 
+        // Mapear columnas normales
         mapeoColumnas.forEach(mapeo => {
           nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
+        });
+
+        // Aplicar mapeos especiales (combinar Nombres + Apellidos)
+        columnasEspeciales.forEach(especial => {
+          if (especial.tipo === 'combinar') {
+            const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
+            nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
+          }
         });
 
         filasNuevas.push(nuevaFila);
@@ -866,24 +950,12 @@ function sincronizacionInicial() {
     const encabezadosOrigen = datosOrigen[0];
     const encabezadosPrincipal = datosPrincipal[0];
 
-    // Encontrar columnas coincidentes (solo mapear las que existen en destino)
-    const mapeoColumnas = [];
-    const columnasIgnoradas = [];
+    // Usar mapeo inteligente con reglas especiales
+    const { mapeoColumnas, columnasEspeciales, columnasIgnoradas } =
+      mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal);
 
-    for (let i = 0; i < encabezadosOrigen.length; i++) {
-      const columnaOrigen = encabezadosOrigen[i].toString().trim();
-      const indicePrincipal = encabezadosPrincipal.findIndex(col =>
-        col.toString().trim().toLowerCase() === columnaOrigen.toLowerCase()
-      );
-
-      if (indicePrincipal >= 0) {
-        mapeoColumnas.push({ origen: i, principal: indicePrincipal, nombre: columnaOrigen });
-      } else {
-        columnasIgnoradas.push(columnaOrigen);
-      }
-    }
-
-    Logger.log(`Columnas coincidentes: ${mapeoColumnas.length}`);
+    Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}`);
+    Logger.log(`Columnas especiales: ${columnasEspeciales.length}`);
     Logger.log(`Columnas ignoradas: ${columnasIgnoradas.length}`);
 
     // Enviar TODAS las filas (sin verificar duplicados)
@@ -892,11 +964,20 @@ function sincronizacionInicial() {
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
 
-      // Crear fila con datos mapeados (solo columnas que existen en destino)
+      // Crear fila con datos mapeados
       const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
 
+      // Mapear columnas normales
       mapeoColumnas.forEach(mapeo => {
         nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
+      });
+
+      // Aplicar mapeos especiales (combinar Nombres + Apellidos)
+      columnasEspeciales.forEach(especial => {
+        if (especial.tipo === 'combinar') {
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
+          nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
+        }
       });
 
       todasLasFilas.push(nuevaFila);
@@ -979,44 +1060,54 @@ function sincronizarAutomatico() {
     const encabezadosOrigen = datosOrigen[0];
     const encabezadosPrincipal = datosPrincipal[0];
 
-    // Mapear solo columnas que existen en destino (ignorar nuevas)
-    const mapeoColumnas = [];
-    const columnasIgnoradas = [];
+    // Usar mapeo inteligente con reglas especiales
+    const { mapeoColumnas, columnasEspeciales, columnasIgnoradas } =
+      mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal);
 
-    for (let i = 0; i < encabezadosOrigen.length; i++) {
-      const columnaOrigen = encabezadosOrigen[i].toString().trim();
-      const indicePrincipal = encabezadosPrincipal.findIndex(col =>
-        col.toString().trim().toLowerCase() === columnaOrigen.toLowerCase()
-      );
+    Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}, Columnas especiales: ${columnasEspeciales.length}, Columnas ignoradas: ${columnasIgnoradas.length}`);
 
-      if (indicePrincipal >= 0) {
-        mapeoColumnas.push({ origen: i, principal: indicePrincipal });
-      } else {
-        columnasIgnoradas.push(columnaOrigen);
+    // Detectar filas nuevas (usar teléfono como identificador único)
+    const datosExistentes = new Set();
+    const indiceTelefonoDestino = encabezadosPrincipal.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'teléfono'
+    );
+
+    for (let i = 1; i < datosPrincipal.length; i++) {
+      if (indiceTelefonoDestino >= 0) {
+        const telefono = datosPrincipal[i][indiceTelefonoDestino];
+        if (telefono) {
+          datosExistentes.add(telefono.toString().trim());
+        }
       }
     }
 
-    Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}, Columnas ignoradas: ${columnasIgnoradas.length}`);
-
-    // Detectar filas nuevas
-    const datosExistentes = new Set();
-
-    for (let i = 1; i < datosPrincipal.length; i++) {
-      const id = datosPrincipal[i].slice(0, 3).join('|');
-      datosExistentes.add(id);
-    }
-
     const filasNuevas = [];
+    const indiceTelefonoOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'teléfono'
+    );
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
-      const id = filaOrigen.slice(0, 3).join('|');
 
-      if (!datosExistentes.has(id)) {
+      // Verificar si es fila nueva usando teléfono
+      const telefono = indiceTelefonoOrigen >= 0 ? filaOrigen[indiceTelefonoOrigen] : '';
+      const esNueva = !telefono || !datosExistentes.has(telefono.toString().trim());
+
+      if (esNueva) {
+        // Crear fila con datos mapeados
         const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
 
+        // Mapear columnas normales
         mapeoColumnas.forEach(mapeo => {
           nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
+        });
+
+        // Aplicar mapeos especiales (combinar Nombres + Apellidos)
+        columnasEspeciales.forEach(especial => {
+          if (especial.tipo === 'combinar') {
+            const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
+            nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
+          }
         });
 
         filasNuevas.push(nuevaFila);
