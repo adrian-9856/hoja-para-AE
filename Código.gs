@@ -4,7 +4,13 @@
  */
 
 // URL directa de exportación de KoboToolbox
-const KOBO_EXPORT_URL = "https://kf.kobotoolbox.org/api/v2/assets/an6ckBVY2QRQPhTdKiEfcF/export-settings/esqz6vy4DwctQCtVEhsSZqw/data.csv";
+const KOBO_EXPORT_URL = "https://kf.kobotoolbox.org/api/v2/assets/aPAe8WZjdW8Pp3bxLVkPtc/export-settings/esqjDCRhVLeFK8ETYM7Dm85/data.csv";
+
+// ID del archivo de Google Sheets donde está la hoja de destino
+const SPREADSHEET_DESTINO_ID = "1T0YCTaiu6qxB6Hzq0nth3ZlJpCeKlGTrw2afncW11ME";
+
+// Nombre de la hoja de destino en el otro archivo
+const HOJA_DESTINO_NOMBRE = "Lista de Espera";
 
 /**
  * Crea el menú personalizado al abrir la hoja
@@ -21,7 +27,6 @@ function onOpen() {
       .addItem('Copiar Columnas Específicas', 'copiarColumnasEspecificas'))
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Configurar')
-      .addItem('Configurar Hoja Principal', 'configurarHojaPrincipal')
       .addItem('Activar Sincronización Automática', 'activarSincronizacionAutomatica')
       .addItem('Desactivar Sincronización Automática', 'desactivarSincronizacionAutomatica')
       .addItem('Ver Estado de Sincronización', 'verEstadoSincronizacion'))
@@ -673,87 +678,30 @@ function verEstadoActualizacion() {
   }
 }
 
-/**
- * Configura el nombre de la hoja principal donde se sincronizarán los datos
- */
-function configurarHojaPrincipal() {
-  const ui = SpreadsheetApp.getUi();
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-
-  // Obtener lista de hojas
-  const hojas = spreadsheet.getSheets();
-  let mensaje = 'Hojas disponibles:\n\n';
-
-  hojas.forEach((hoja, index) => {
-    mensaje += `${index + 1}. ${hoja.getName()}\n`;
-  });
-
-  const respuesta = ui.prompt(
-    'Configurar Hoja Principal',
-    mensaje + '\n\nIngresa el NOMBRE de la hoja donde quieres sincronizar los datos:',
-    ui.ButtonSet.OK_CANCEL
-  );
-
-  if (respuesta.getSelectedButton() !== ui.Button.OK) {
-    return;
-  }
-
-  const nombreHoja = respuesta.getResponseText().trim();
-
-  // Verificar que la hoja existe
-  const hoja = spreadsheet.getSheetByName(nombreHoja);
-
-  if (!hoja) {
-    ui.alert('❌ Error', `La hoja "${nombreHoja}" no existe.`, ui.ButtonSet.OK);
-    return;
-  }
-
-  // Guardar configuración
-  const propiedades = PropertiesService.getScriptProperties();
-  propiedades.setProperty('HOJA_PRINCIPAL', nombreHoja);
-
-  ui.alert(
-    '✅ Configurado',
-    `La hoja principal es ahora: "${nombreHoja}"\n\n` +
-    `Usa "🔄 Sincronizar con Hoja Principal" para enviar solo datos nuevos.`,
-    ui.ButtonSet.OK
-  );
-}
 
 /**
- * Sincroniza datos de DatosKobo con la hoja principal
- * Solo agrega filas nuevas y columnas que coinciden
+ * Sincroniza datos de DatosKobo con la hoja principal en archivo externo
+ * Solo agrega filas nuevas y columnas que coinciden (las demás se ignoran)
  */
 function sincronizarConHojaPrincipal() {
   const ui = SpreadsheetApp.getUi();
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheetLocal = SpreadsheetApp.getActiveSpreadsheet();
 
   try {
-    // Obtener configuración
-    const propiedades = PropertiesService.getScriptProperties();
-    const nombreHojaPrincipal = propiedades.getProperty('HOJA_PRINCIPAL');
+    // Acceder al archivo externo de Google Sheets
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID);
+    const hojaPrincipal = spreadsheetDestino.getSheetByName(HOJA_DESTINO_NOMBRE);
 
-    if (!nombreHojaPrincipal) {
-      ui.alert(
-        '⚠️ Configuración necesaria',
-        'Primero configura la hoja principal:\n\n' +
-        'KoboToolbox > ⚙️ Configurar > Configurar Hoja Principal',
-        ui.ButtonSet.OK
-      );
+    if (!hojaPrincipal) {
+      ui.alert('❌ Error', `No se encontró la hoja "${HOJA_DESTINO_NOMBRE}" en el archivo destino.`, ui.ButtonSet.OK);
       return;
     }
 
-    // Obtener hojas
-    const hojaOrigen = spreadsheet.getSheetByName("DatosKobo");
-    const hojaPrincipal = spreadsheet.getSheetByName(nombreHojaPrincipal);
+    // Obtener hoja de origen (local)
+    const hojaOrigen = spreadsheetLocal.getSheetByName("DatosKobo");
 
     if (!hojaOrigen) {
       ui.alert('❌ Error', 'No se encontró la hoja "DatosKobo". Primero importa los datos.', ui.ButtonSet.OK);
-      return;
-    }
-
-    if (!hojaPrincipal) {
-      ui.alert('❌ Error', `No se encontró la hoja "${nombreHojaPrincipal}".`, ui.ButtonSet.OK);
       return;
     }
 
@@ -766,13 +714,18 @@ function sincronizarConHojaPrincipal() {
       return;
     }
 
+    if (datosPrincipal.length === 0) {
+      ui.alert('❌ Error', `La hoja "${HOJA_DESTINO_NOMBRE}" está vacía. Debe tener al menos los encabezados.`, ui.ButtonSet.OK);
+      return;
+    }
+
     // Encabezados
     const encabezadosOrigen = datosOrigen[0];
-    const encabezadosPrincipal = datosPrincipal.length > 0 ? datosPrincipal[0] : [];
+    const encabezadosPrincipal = datosPrincipal[0];
 
-    // Encontrar columnas coincidentes
+    // Encontrar columnas coincidentes (solo mapear las que existen en destino)
     const mapeoColumnas = [];
-    const nuevasColumnas = [];
+    const columnasIgnoradas = [];
 
     for (let i = 0; i < encabezadosOrigen.length; i++) {
       const columnaOrigen = encabezadosOrigen[i].toString().trim();
@@ -783,32 +736,14 @@ function sincronizarConHojaPrincipal() {
       if (indicePrincipal >= 0) {
         mapeoColumnas.push({ origen: i, principal: indicePrincipal, nombre: columnaOrigen });
       } else {
-        nuevasColumnas.push({ origen: i, nombre: columnaOrigen });
+        columnasIgnoradas.push(columnaOrigen);
       }
     }
 
     Logger.log(`Columnas coincidentes: ${mapeoColumnas.length}`);
-    Logger.log(`Columnas nuevas: ${nuevasColumnas.length}`);
+    Logger.log(`Columnas ignoradas: ${columnasIgnoradas.length}`);
 
-    // Agregar nuevas columnas al final de la hoja principal
-    if (nuevasColumnas.length > 0) {
-      const ultimaColumna = encabezadosPrincipal.length;
-
-      for (let i = 0; i < nuevasColumnas.length; i++) {
-        const col = nuevasColumnas[i];
-        hojaPrincipal.getRange(1, ultimaColumna + i + 1).setValue(col.nombre);
-        encabezadosPrincipal.push(col.nombre);
-        mapeoColumnas.push({ origen: col.origen, principal: ultimaColumna + i, nombre: col.nombre });
-      }
-
-      // Formatear nuevas columnas
-      const rangoNuevasColumnas = hojaPrincipal.getRange(1, ultimaColumna + 1, 1, nuevasColumnas.length);
-      rangoNuevasColumnas.setFontWeight('bold');
-      rangoNuevasColumnas.setBackground('#4285f4');
-      rangoNuevasColumnas.setFontColor('#ffffff');
-    }
-
-    // Detectar filas nuevas (usar primera columna como identificador)
+    // Detectar filas nuevas (usar primeras 3 columnas como identificador)
     const datosExistentes = new Set();
 
     for (let i = 1; i < datosPrincipal.length; i++) {
@@ -825,7 +760,7 @@ function sincronizarConHojaPrincipal() {
       const id = filaOrigen.slice(0, 3).join('|');
 
       if (!datosExistentes.has(id)) {
-        // Crear fila con datos mapeados
+        // Crear fila con datos mapeados (solo columnas que existen en destino)
         const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
 
         mapeoColumnas.forEach(mapeo => {
@@ -852,16 +787,19 @@ function sincronizarConHojaPrincipal() {
     hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosPrincipal.length).setValues(filasNuevas);
 
     // Registrar sincronización
+    const propiedades = PropertiesService.getScriptProperties();
     propiedades.setProperty('ULTIMA_SINCRONIZACION', new Date().toLocaleString('es-ES'));
     propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS', filasNuevas.length.toString());
 
-    ui.alert(
-      '✅ Sincronización exitosa',
-      `Se agregaron ${filasNuevas.length} filas nuevas a "${nombreHojaPrincipal}"\n\n` +
-      `Columnas coincidentes: ${mapeoColumnas.length}\n` +
-      `Columnas nuevas agregadas: ${nuevasColumnas.length}`,
-      ui.ButtonSet.OK
-    );
+    let mensaje = `Se agregaron ${filasNuevas.length} filas nuevas a "${HOJA_DESTINO_NOMBRE}"\n\n`;
+    mensaje += `Columnas sincronizadas: ${mapeoColumnas.length}`;
+
+    if (columnasIgnoradas.length > 0) {
+      mensaje += `\n\n⚠️ Columnas ignoradas: ${columnasIgnoradas.length}\n`;
+      mensaje += `(Solo se sincronizan columnas que ya existen en la hoja destino)`;
+    }
+
+    ui.alert('✅ Sincronización exitosa', mensaje, ui.ButtonSet.OK);
 
   } catch (error) {
     ui.alert('❌ Error', 'Error al sincronizar: ' + error.message, ui.ButtonSet.OK);
@@ -871,6 +809,7 @@ function sincronizarConHojaPrincipal() {
 
 /**
  * Función de sincronización automática (silenciosa)
+ * Sincroniza con archivo externo de Google Sheets
  */
 function sincronizarAutomatico() {
   try {
@@ -880,21 +819,21 @@ function sincronizarAutomatico() {
     // Esperar un segundo
     Utilities.sleep(1000);
 
-    // Luego sincronizar con hoja principal
-    const propiedades = PropertiesService.getScriptProperties();
-    const nombreHojaPrincipal = propiedades.getProperty('HOJA_PRINCIPAL');
+    // Acceder al archivo externo de Google Sheets
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID);
+    const hojaPrincipal = spreadsheetDestino.getSheetByName(HOJA_DESTINO_NOMBRE);
 
-    if (!nombreHojaPrincipal) {
-      Logger.log('No hay hoja principal configurada');
+    if (!hojaPrincipal) {
+      Logger.log(`No se encontró la hoja "${HOJA_DESTINO_NOMBRE}" en el archivo destino`);
       return;
     }
 
-    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    const hojaOrigen = spreadsheet.getSheetByName("DatosKobo");
-    const hojaPrincipal = spreadsheet.getSheetByName(nombreHojaPrincipal);
+    // Obtener hoja de origen (local)
+    const spreadsheetLocal = SpreadsheetApp.getActiveSpreadsheet();
+    const hojaOrigen = spreadsheetLocal.getSheetByName("DatosKobo");
 
-    if (!hojaOrigen || !hojaPrincipal) {
-      Logger.log('Hojas no encontradas');
+    if (!hojaOrigen) {
+      Logger.log('No se encontró la hoja "DatosKobo"');
       return;
     }
 
@@ -906,12 +845,17 @@ function sincronizarAutomatico() {
       return;
     }
 
-    const encabezadosOrigen = datosOrigen[0];
-    const encabezadosPrincipal = datosPrincipal.length > 0 ? datosPrincipal[0] : [];
+    if (datosPrincipal.length === 0) {
+      Logger.log('La hoja destino está vacía');
+      return;
+    }
 
-    // Mapear columnas
+    const encabezadosOrigen = datosOrigen[0];
+    const encabezadosPrincipal = datosPrincipal[0];
+
+    // Mapear solo columnas que existen en destino (ignorar nuevas)
     const mapeoColumnas = [];
-    const nuevasColumnas = [];
+    const columnasIgnoradas = [];
 
     for (let i = 0; i < encabezadosOrigen.length; i++) {
       const columnaOrigen = encabezadosOrigen[i].toString().trim();
@@ -922,21 +866,11 @@ function sincronizarAutomatico() {
       if (indicePrincipal >= 0) {
         mapeoColumnas.push({ origen: i, principal: indicePrincipal });
       } else {
-        nuevasColumnas.push({ origen: i, nombre: columnaOrigen });
+        columnasIgnoradas.push(columnaOrigen);
       }
     }
 
-    // Agregar nuevas columnas
-    if (nuevasColumnas.length > 0) {
-      const ultimaColumna = encabezadosPrincipal.length;
-
-      for (let i = 0; i < nuevasColumnas.length; i++) {
-        const col = nuevasColumnas[i];
-        hojaPrincipal.getRange(1, ultimaColumna + i + 1).setValue(col.nombre);
-        encabezadosPrincipal.push(col.nombre);
-        mapeoColumnas.push({ origen: col.origen, principal: ultimaColumna + i });
-      }
-    }
+    Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}, Columnas ignoradas: ${columnasIgnoradas.length}`);
 
     // Detectar filas nuevas
     const datosExistentes = new Set();
@@ -967,16 +901,18 @@ function sincronizarAutomatico() {
       const ultimaFila = hojaPrincipal.getLastRow();
       hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosPrincipal.length).setValues(filasNuevas);
 
+      const propiedades = PropertiesService.getScriptProperties();
       propiedades.setProperty('ULTIMA_SINCRONIZACION', new Date().toLocaleString('es-ES'));
       propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS', filasNuevas.length.toString());
 
-      Logger.log(`Sincronización automática: ${filasNuevas.length} filas nuevas`);
+      Logger.log(`Sincronización automática: ${filasNuevas.length} filas nuevas agregadas`);
     } else {
       Logger.log('Sincronización automática: sin datos nuevos');
     }
 
   } catch (error) {
     Logger.log('Error en sincronización automática: ' + error.message);
+    Logger.log('Stack: ' + error.stack);
   }
 }
 
@@ -985,18 +921,6 @@ function sincronizarAutomatico() {
  */
 function activarSincronizacionAutomatica() {
   const ui = SpreadsheetApp.getUi();
-  const propiedades = PropertiesService.getScriptProperties();
-  const nombreHojaPrincipal = propiedades.getProperty('HOJA_PRINCIPAL');
-
-  if (!nombreHojaPrincipal) {
-    ui.alert(
-      '⚠️ Configuración necesaria',
-      'Primero configura la hoja principal:\n\n' +
-      'KoboToolbox > ⚙️ Configurar > Configurar Hoja Principal',
-      ui.ButtonSet.OK
-    );
-    return;
-  }
 
   const respuesta = ui.prompt(
     'Activar Sincronización Automática',
@@ -1038,10 +962,10 @@ function activarSincronizacionAutomatica() {
 
     ui.alert(
       '✅ Sincronización Activada',
-      `Los datos se sincronizarán automáticamente cada ${horas} hora(s) con "${nombreHojaPrincipal}".\n\n` +
+      `Los datos se sincronizarán automáticamente cada ${horas} hora(s) con "${HOJA_DESTINO_NOMBRE}".\n\n` +
       `✓ Solo se agregarán datos NUEVOS\n` +
       `✓ Las columnas coincidentes se mapearán automáticamente\n` +
-      `✓ Las columnas nuevas se agregarán al final`,
+      `✓ Las columnas que no existen en destino se IGNORARÁN`,
       ui.ButtonSet.OK
     );
 
@@ -1086,7 +1010,6 @@ function verEstadoSincronizacion() {
 
   try {
     const propiedades = PropertiesService.getScriptProperties();
-    const nombreHojaPrincipal = propiedades.getProperty('HOJA_PRINCIPAL');
     const ultimaSincronizacion = propiedades.getProperty('ULTIMA_SINCRONIZACION') || 'Nunca';
     const ultimasFilas = propiedades.getProperty('ULTIMA_SINCRONIZACION_FILAS') || '0';
 
@@ -1100,7 +1023,8 @@ function verEstadoSincronizacion() {
       }
     }
 
-    let mensaje = `Hoja principal: ${nombreHojaPrincipal || 'No configurada'}\n`;
+    let mensaje = `Hoja de destino: "${HOJA_DESTINO_NOMBRE}"\n`;
+    mensaje += `Archivo destino ID: ${SPREADSHEET_DESTINO_ID}\n\n`;
     mensaje += `Última sincronización: ${ultimaSincronizacion}\n`;
     mensaje += `Filas agregadas: ${ultimasFilas}\n\n`;
 
