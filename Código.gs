@@ -20,7 +20,9 @@ function onOpen() {
   ui.createMenu('KoboToolbox')
     .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
     .addItem('🔄 Actualizar Datos', 'actualizarDatosAutomatico')
-    .addItem('🔄 Sincronizar con Hoja Principal', 'sincronizarConHojaPrincipal')
+    .addSeparator()
+    .addItem('🔄 Sincronizar Solo Nuevos', 'sincronizarConHojaPrincipal')
+    .addItem('📤 Sincronización Inicial (Enviar Todo)', 'sincronizacionInicial')
     .addSeparator()
     .addSubMenu(ui.createMenu('📤 Copiar a Otra Hoja')
       .addItem('Copiar Todos los Datos', 'enviarDatosAOtraHoja')
@@ -808,6 +810,130 @@ function sincronizarConHojaPrincipal() {
 }
 
 /**
+ * Sincronización inicial - Envía TODOS los datos sin verificar duplicados
+ * Usar solo la primera vez para sincronizar datos existentes
+ */
+function sincronizacionInicial() {
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheetLocal = SpreadsheetApp.getActiveSpreadsheet();
+
+  try {
+    // Confirmar con el usuario
+    const confirmacion = ui.alert(
+      '⚠️ Sincronización Inicial',
+      'Esto enviará TODOS los datos de DatosKobo a "Lista de Espera" sin verificar duplicados.\n\n' +
+      '⚠️ ADVERTENCIA: Si los datos ya existen, se duplicarán.\n\n' +
+      '¿Deseas continuar?',
+      ui.ButtonSet.YES_NO
+    );
+
+    if (confirmacion !== ui.Button.YES) {
+      return;
+    }
+
+    // Acceder al archivo externo de Google Sheets
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID);
+    const hojaPrincipal = spreadsheetDestino.getSheetByName(HOJA_DESTINO_NOMBRE);
+
+    if (!hojaPrincipal) {
+      ui.alert('❌ Error', `No se encontró la hoja "${HOJA_DESTINO_NOMBRE}" en el archivo destino.`, ui.ButtonSet.OK);
+      return;
+    }
+
+    // Obtener hoja de origen (local)
+    const hojaOrigen = spreadsheetLocal.getSheetByName("DatosKobo");
+
+    if (!hojaOrigen) {
+      ui.alert('❌ Error', 'No se encontró la hoja "DatosKobo". Primero importa los datos.', ui.ButtonSet.OK);
+      return;
+    }
+
+    // Obtener datos
+    const datosOrigen = hojaOrigen.getDataRange().getValues();
+    const datosPrincipal = hojaPrincipal.getDataRange().getValues();
+
+    if (datosOrigen.length === 0 || datosOrigen.length === 1) {
+      ui.alert('❌ Error', 'La hoja "DatosKobo" está vacía o solo tiene encabezados.', ui.ButtonSet.OK);
+      return;
+    }
+
+    if (datosPrincipal.length === 0) {
+      ui.alert('❌ Error', `La hoja "${HOJA_DESTINO_NOMBRE}" está vacía. Debe tener al menos los encabezados.`, ui.ButtonSet.OK);
+      return;
+    }
+
+    // Encabezados
+    const encabezadosOrigen = datosOrigen[0];
+    const encabezadosPrincipal = datosPrincipal[0];
+
+    // Encontrar columnas coincidentes (solo mapear las que existen en destino)
+    const mapeoColumnas = [];
+    const columnasIgnoradas = [];
+
+    for (let i = 0; i < encabezadosOrigen.length; i++) {
+      const columnaOrigen = encabezadosOrigen[i].toString().trim();
+      const indicePrincipal = encabezadosPrincipal.findIndex(col =>
+        col.toString().trim().toLowerCase() === columnaOrigen.toLowerCase()
+      );
+
+      if (indicePrincipal >= 0) {
+        mapeoColumnas.push({ origen: i, principal: indicePrincipal, nombre: columnaOrigen });
+      } else {
+        columnasIgnoradas.push(columnaOrigen);
+      }
+    }
+
+    Logger.log(`Columnas coincidentes: ${mapeoColumnas.length}`);
+    Logger.log(`Columnas ignoradas: ${columnasIgnoradas.length}`);
+
+    // Enviar TODAS las filas (sin verificar duplicados)
+    const todasLasFilas = [];
+
+    for (let i = 1; i < datosOrigen.length; i++) {
+      const filaOrigen = datosOrigen[i];
+
+      // Crear fila con datos mapeados (solo columnas que existen en destino)
+      const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
+
+      mapeoColumnas.forEach(mapeo => {
+        nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
+      });
+
+      todasLasFilas.push(nuevaFila);
+    }
+
+    Logger.log(`Total de filas a enviar: ${todasLasFilas.length}`);
+
+    if (todasLasFilas.length === 0) {
+      ui.alert('ℹ️ Sin datos', 'No hay datos para sincronizar.', ui.ButtonSet.OK);
+      return;
+    }
+
+    // Agregar todas las filas al final
+    const ultimaFila = hojaPrincipal.getLastRow();
+    hojaPrincipal.getRange(ultimaFila + 1, 1, todasLasFilas.length, encabezadosPrincipal.length).setValues(todasLasFilas);
+
+    // Registrar sincronización
+    const propiedades = PropertiesService.getScriptProperties();
+    propiedades.setProperty('ULTIMA_SINCRONIZACION', new Date().toLocaleString('es-ES'));
+    propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS', todasLasFilas.length.toString());
+
+    let mensaje = `✅ Se enviaron ${todasLasFilas.length} filas a "${HOJA_DESTINO_NOMBRE}"\n\n`;
+    mensaje += `Columnas sincronizadas: ${mapeoColumnas.length}`;
+
+    if (columnasIgnoradas.length > 0) {
+      mensaje += `\n\n⚠️ Columnas ignoradas: ${columnasIgnoradas.length}`;
+    }
+
+    ui.alert('✅ Sincronización Inicial Completada', mensaje, ui.ButtonSet.OK);
+
+  } catch (error) {
+    ui.alert('❌ Error', 'Error al sincronizar: ' + error.message, ui.ButtonSet.OK);
+    Logger.log('Error: ' + error.stack);
+  }
+}
+
+/**
  * Función de sincronización automática (silenciosa)
  * Sincroniza con archivo externo de Google Sheets
  */
@@ -924,13 +1050,13 @@ function activarSincronizacionAutomatica() {
 
   const respuesta = ui.prompt(
     'Activar Sincronización Automática',
-    '¿Cada cuántas horas deseas sincronizar los datos?\n\n' +
-    'Recomendaciones:\n' +
-    '1 = Cada hora (muy frecuente)\n' +
-    '6 = Cada 6 horas (recomendado)\n' +
-    '12 = Cada 12 horas\n' +
-    '24 = Una vez al día\n\n' +
-    'Ingresa el número de horas:',
+    '¿Cada cuántos MINUTOS deseas sincronizar?\n\n' +
+    '⚡ SINCRONIZACIÓN RÁPIDA (Recomendado):\n' +
+    '5 = Cada 5 minutos (muy rápido)\n' +
+    '10 = Cada 10 minutos (rápido)\n' +
+    '15 = Cada 15 minutos (recomendado)\n' +
+    '30 = Cada 30 minutos\n\n' +
+    'Ingresa el número de minutos:',
     ui.ButtonSet.OK_CANCEL
   );
 
@@ -938,10 +1064,11 @@ function activarSincronizacionAutomatica() {
     return;
   }
 
-  const horas = parseInt(respuesta.getResponseText().trim());
+  const minutos = parseInt(respuesta.getResponseText().trim());
 
-  if (isNaN(horas) || horas < 1 || horas > 24) {
-    ui.alert('❌ Error', 'Ingresa un número válido entre 1 y 24', ui.ButtonSet.OK);
+  // Validar que sea 5, 10, 15 o 30 minutos
+  if (![5, 10, 15, 30].includes(minutos)) {
+    ui.alert('❌ Error', 'Por favor ingresa: 5, 10, 15 o 30 minutos', ui.ButtonSet.OK);
     return;
   }
 
@@ -954,16 +1081,17 @@ function activarSincronizacionAutomatica() {
       }
     }
 
-    // Crear nuevo trigger
+    // Crear nuevo trigger con sincronización por minutos
     ScriptApp.newTrigger('sincronizarAutomatico')
       .timeBased()
-      .everyHours(horas)
+      .everyMinutes(minutos)
       .create();
 
     ui.alert(
-      '✅ Sincronización Activada',
-      `Los datos se sincronizarán automáticamente cada ${horas} hora(s) con "${HOJA_DESTINO_NOMBRE}".\n\n` +
+      '✅ Sincronización Rápida Activada',
+      `⚡ Los datos se sincronizarán automáticamente cada ${minutos} minutos con "${HOJA_DESTINO_NOMBRE}".\n\n` +
       `✓ Solo se agregarán datos NUEVOS\n` +
+      `✓ Sincronización casi instantánea\n` +
       `✓ Las columnas coincidentes se mapearán automáticamente\n` +
       `✓ Las columnas que no existen en destino se IGNORARÁN`,
       ui.ButtonSet.OK
@@ -1023,17 +1151,20 @@ function verEstadoSincronizacion() {
       }
     }
 
-    let mensaje = `Hoja de destino: "${HOJA_DESTINO_NOMBRE}"\n`;
-    mensaje += `Archivo destino ID: ${SPREADSHEET_DESTINO_ID}\n\n`;
-    mensaje += `Última sincronización: ${ultimaSincronizacion}\n`;
-    mensaje += `Filas agregadas: ${ultimasFilas}\n\n`;
+    let mensaje = `📍 Hoja de destino: "${HOJA_DESTINO_NOMBRE}"\n`;
+    mensaje += `📁 Archivo destino: ${SPREADSHEET_DESTINO_ID.substring(0, 20)}...\n\n`;
+    mensaje += `🕒 Última sincronización: ${ultimaSincronizacion}\n`;
+    mensaje += `📊 Filas agregadas: ${ultimasFilas}\n\n`;
 
     if (triggerActivo) {
-      mensaje += '✅ Estado: ACTIVA\n\n';
-      mensaje += 'La sincronización automática está funcionando.';
+      mensaje += '✅ Estado: ACTIVA (Sincronización rápida)\n\n';
+      mensaje += '⚡ Los datos se sincronizan automáticamente cada pocos minutos.\n';
+      mensaje += 'Las nuevas respuestas de KoboToolbox se enviarán casi de inmediato.';
     } else {
       mensaje += '⚠️ Estado: INACTIVA\n\n';
-      mensaje += 'Para activar:\nKoboToolbox > ⚙️ Configurar > Activar Sincronización Automática';
+      mensaje += 'Para activar sincronización rápida:\n';
+      mensaje += 'KoboToolbox > ⚙️ Configurar > Activar Sincronización Automática\n\n';
+      mensaje += 'Recomendado: 15 minutos para sincronización casi instantánea';
     }
 
     ui.alert('Estado de Sincronización', mensaje, ui.ButtonSet.OK);
