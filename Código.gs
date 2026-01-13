@@ -1361,11 +1361,14 @@ function esFecha2026(fechaTexto) {
 
 /**
  * Sincroniza datos de Intervención de Casos (solo 2026)
+ * Descarga directamente de KoboToolbox y envía a la hoja destino
  */
 function sincronizarIntervencionCasos() {
   const ui = SpreadsheetApp.getUi();
 
   try {
+    ui.alert('⏳ Sincronizando', 'Descargando datos del 2026 de KoboToolbox...', ui.ButtonSet.OK);
+
     // Descargar CSV de KoboToolbox
     const response = UrlFetchApp.fetch(KOBO_INTERVENCION_URL, {
       muteHttpExceptions: true
@@ -1397,7 +1400,7 @@ function sincronizarIntervencionCasos() {
 
     datos = normalizarDatos(datos);
 
-    // Acceder al archivo destino
+    // Acceder DIRECTAMENTE al archivo destino (sin hoja intermedia)
     const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_INTERVENCION_ID);
     const hojaDestino = spreadsheetDestino.getSheetByName(HOJA_INTERVENCION_NOMBRE);
 
@@ -1409,7 +1412,7 @@ function sincronizarIntervencionCasos() {
     const datosDestino = hojaDestino.getDataRange().getValues();
 
     if (datosDestino.length === 0) {
-      ui.alert('❌ Error', 'La hoja de destino está vacía', ui.ButtonSet.OK);
+      ui.alert('❌ Error', 'La hoja de destino está vacía. Debe tener encabezados.', ui.ButtonSet.OK);
       return;
     }
 
@@ -1426,7 +1429,7 @@ function sincronizarIntervencionCasos() {
       return;
     }
 
-    // Mapear columnas
+    // Mapear columnas automáticamente
     const mapeoColumnas = [];
     for (let i = 0; i < encabezadosOrigen.length; i++) {
       const columnaOrigen = encabezadosOrigen[i].toString().trim().toLowerCase();
@@ -1438,6 +1441,8 @@ function sincronizarIntervencionCasos() {
         mapeoColumnas.push({ origen: i, destino: indiceDestino });
       }
     }
+
+    Logger.log(`Mapeo: ${mapeoColumnas.length} columnas coinciden`);
 
     // Buscar columna de Participante para identificar duplicados
     const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
@@ -1457,6 +1462,7 @@ function sincronizarIntervencionCasos() {
     // Filtrar solo datos de 2026 y nuevos
     const filasNuevas = [];
     let registrosFiltrados = 0;
+    let duplicados = 0;
 
     for (let i = 1; i < datos.length; i++) {
       const filaOrigen = datos[i];
@@ -1477,6 +1483,7 @@ function sincronizarIntervencionCasos() {
         if (indiceParticipanteOrigen >= 0) {
           const participante = filaOrigen[indiceParticipanteOrigen];
           if (participante && datosExistentes.has(participante.toString().trim())) {
+            duplicados++;
             continue;
           }
         }
@@ -1492,15 +1499,16 @@ function sincronizarIntervencionCasos() {
     }
 
     if (filasNuevas.length === 0) {
-      ui.alert(
-        'ℹ️ Sin datos nuevos',
-        `No hay datos nuevos del 2026 para sincronizar.\n\n${registrosFiltrados} registros filtrados (no son del 2026)`,
-        ui.ButtonSet.OK
-      );
+      let mensaje = 'No hay datos nuevos del 2026 para sincronizar.\n\n';
+      mensaje += `📊 Resumen:\n`;
+      mensaje += `• Registros no son de 2026: ${registrosFiltrados}\n`;
+      mensaje += `• Duplicados: ${duplicados}`;
+
+      ui.alert('ℹ️ Sin datos nuevos', mensaje, ui.ButtonSet.OK);
       return;
     }
 
-    // Agregar filas nuevas
+    // Agregar filas nuevas DIRECTAMENTE
     const ultimaFila = hojaDestino.getLastRow();
     hojaDestino.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosDestino.length).setValues(filasNuevas);
 
@@ -1509,12 +1517,14 @@ function sincronizarIntervencionCasos() {
     propiedades.setProperty('ULTIMA_SINCRONIZACION_INTERVENCION', new Date().toLocaleString('es-ES'));
     propiedades.setProperty('ULTIMA_SINCRONIZACION_INTERVENCION_FILAS', filasNuevas.length.toString());
 
-    ui.alert(
-      '✅ Sincronización exitosa',
-      `Se agregaron ${filasNuevas.length} registros del 2026 a "${HOJA_INTERVENCION_NOMBRE}"\n\n` +
-      `${registrosFiltrados} registros filtrados (no son del 2026)`,
-      ui.ButtonSet.OK
-    );
+    let mensaje = `✅ Se agregaron ${filasNuevas.length} registros del 2026\n\n`;
+    mensaje += `📊 Resumen:\n`;
+    mensaje += `• Registros nuevos del 2026: ${filasNuevas.length}\n`;
+    mensaje += `• Registros no son de 2026: ${registrosFiltrados}\n`;
+    mensaje += `• Duplicados omitidos: ${duplicados}\n`;
+    mensaje += `• Columnas mapeadas: ${mapeoColumnas.length}`;
+
+    ui.alert('✅ Sincronización exitosa', mensaje, ui.ButtonSet.OK);
 
   } catch (error) {
     ui.alert('❌ Error', 'Error al sincronizar: ' + error.message, ui.ButtonSet.OK);
