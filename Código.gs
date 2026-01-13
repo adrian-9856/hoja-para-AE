@@ -1,16 +1,16 @@
 /**
  * Script para importar datos CSV desde KoboToolbox a Google Sheets
- * Versión simplificada y optimizada
+ * Sistema: Intervención de Casos
  */
 
-// URL directa de exportación de KoboToolbox
-const KOBO_EXPORT_URL = "https://kf.kobotoolbox.org/api/v2/assets/an6ckBVY2QRQPhTdKiEfcF/export-settings/esTWru6BMfvmXmFEDJm2WG7/data.csv";
+// URL directa de exportación de KoboToolbox - INTERVENCIÓN DE CASOS
+const KOBO_EXPORT_URL = "https://kf.kobotoolbox.org/api/v2/assets/avnPVj8iEwvfwUkySWcMAJ/export-settings/esiNV5nenKxfDh9wNmZD6kC/data.csv";
 
 // ID del archivo de Google Sheets donde está la hoja de destino
 const SPREADSHEET_DESTINO_ID = "1T0YCTaiu6qxB6Hzq0nth3ZlJpCeKlGTrw2afncW11ME";
 
 // Nombre de la hoja de destino en el otro archivo
-const HOJA_DESTINO_NOMBRE = "Lista de Espera";
+const HOJA_DESTINO_NOMBRE = "Intervención de casos";
 
 /**
  * Encuentra la última fila con datos REALES (no vacía)
@@ -37,16 +37,12 @@ function encontrarUltimaFilaConDatos(hoja) {
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('KoboToolbox')
+  ui.createMenu('🎯 Intervención de Casos')
     .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
     .addItem('🔄 Actualizar Datos', 'actualizarDatosAutomatico')
     .addSeparator()
     .addItem('🔄 Sincronizar Solo Nuevos', 'sincronizarConHojaPrincipal')
     .addItem('📤 Sincronización Inicial (Enviar Todo)', 'sincronizacionInicial')
-    .addSeparator()
-    .addSubMenu(ui.createMenu('📤 Copiar a Otra Hoja')
-      .addItem('Copiar Todos los Datos', 'enviarDatosAOtraHoja')
-      .addItem('Copiar Columnas Específicas', 'copiarColumnasEspecificas'))
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Configurar')
       .addItem('Activar Sincronización Automática', 'activarSincronizacionAutomatica')
@@ -259,186 +255,6 @@ function importarCSVdesdeKobo() {
 }
 
 /**
- * Copia todos los datos de DatosKobo a otra hoja
- */
-function enviarDatosAOtraHoja() {
-  const ui = SpreadsheetApp.getUi();
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-
-  try {
-    const hojaOrigen = spreadsheet.getSheetByName("DatosKobo");
-
-    if (!hojaOrigen) {
-      ui.alert('Error', 'No se encontró la hoja "DatosKobo". Primero importa los datos.', ui.ButtonSet.OK);
-      return;
-    }
-
-    const datosOrigen = hojaOrigen.getDataRange().getValues();
-
-    if (datosOrigen.length === 0) {
-      ui.alert('Error', 'La hoja "DatosKobo" está vacía.', ui.ButtonSet.OK);
-      return;
-    }
-
-    const respuesta = ui.prompt(
-      'Nombre de la hoja destino',
-      'Ingresa el nombre de la nueva hoja:',
-      ui.ButtonSet.OK_CANCEL
-    );
-
-    if (respuesta.getSelectedButton() !== ui.Button.OK) {
-      return;
-    }
-
-    const nombreHoja = respuesta.getResponseText().trim();
-
-    if (!nombreHoja) {
-      ui.alert('Error', 'Debes ingresar un nombre válido.', ui.ButtonSet.OK);
-      return;
-    }
-
-    let hojaDestino = spreadsheet.getSheetByName(nombreHoja);
-
-    if (hojaDestino) {
-      const confirmar = ui.alert(
-        'Hoja existe',
-        `La hoja "${nombreHoja}" ya existe. ¿Deseas reemplazar su contenido?`,
-        ui.ButtonSet.YES_NO
-      );
-
-      if (confirmar !== ui.Button.YES) {
-        return;
-      }
-
-      hojaDestino.clear();
-    } else {
-      hojaDestino = spreadsheet.insertSheet(nombreHoja);
-    }
-
-    const numFilas = datosOrigen.length;
-    const numColumnas = datosOrigen[0].length;
-
-    hojaDestino.getRange(1, 1, numFilas, numColumnas).setValues(datosOrigen);
-
-    const encabezado = hojaDestino.getRange(1, 1, 1, numColumnas);
-    encabezado.setFontWeight('bold');
-    encabezado.setBackground('#34A853');
-    encabezado.setFontColor('#ffffff');
-    encabezado.setWrap(true);
-
-    for (let i = 1; i <= numColumnas; i++) {
-      hojaDestino.autoResizeColumn(i);
-    }
-
-    hojaDestino.setFrozenRows(1);
-
-    ui.alert('✅ Éxito', `${numFilas - 1} filas copiadas a "${nombreHoja}"`, ui.ButtonSet.OK);
-
-  } catch (error) {
-    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
-    Logger.log('Error: ' + error.stack);
-  }
-}
-
-/**
- * Copia solo columnas específicas a otra hoja
- */
-function copiarColumnasEspecificas() {
-  const ui = SpreadsheetApp.getUi();
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-
-  try {
-    const hojaOrigen = spreadsheet.getSheetByName("DatosKobo");
-
-    if (!hojaOrigen) {
-      ui.alert('Error', 'No se encontró la hoja "DatosKobo".', ui.ButtonSet.OK);
-      return;
-    }
-
-    const datosOrigen = hojaOrigen.getDataRange().getValues();
-
-    if (datosOrigen.length === 0) {
-      ui.alert('Error', 'La hoja "DatosKobo" está vacía.', ui.ButtonSet.OK);
-      return;
-    }
-
-    const encabezados = datosOrigen[0];
-    let mensaje = 'Columnas disponibles:\n\n';
-
-    for (let i = 0; i < encabezados.length && i < 30; i++) {
-      const nombre = encabezados[i].toString().substring(0, 40);
-      mensaje += `${i + 1}. ${nombre}\n`;
-    }
-
-    if (encabezados.length > 30) {
-      mensaje += `\n... y ${encabezados.length - 30} columnas más`;
-    }
-
-    const respuesta = ui.prompt(
-      'Seleccionar columnas',
-      mensaje + '\n\nIngresa los números separados por comas (ej: 1,3,5):',
-      ui.ButtonSet.OK_CANCEL
-    );
-
-    if (respuesta.getSelectedButton() !== ui.Button.OK) {
-      return;
-    }
-
-    const columnasTexto = respuesta.getResponseText().trim();
-    const columnasSeleccionadas = columnasTexto.split(',').map(num => parseInt(num.trim()) - 1);
-
-    if (columnasSeleccionadas.some(col => isNaN(col) || col < 0 || col >= encabezados.length)) {
-      ui.alert('Error', 'Columnas inválidas. Verifica los números.', ui.ButtonSet.OK);
-      return;
-    }
-
-    const respuestaNombre = ui.prompt(
-      'Nombre de hoja',
-      'Ingresa el nombre de la nueva hoja:',
-      ui.ButtonSet.OK_CANCEL
-    );
-
-    if (respuestaNombre.getSelectedButton() !== ui.Button.OK) {
-      return;
-    }
-
-    const nombreHoja = respuestaNombre.getResponseText().trim();
-
-    let hojaDestino = spreadsheet.getSheetByName(nombreHoja);
-
-    if (hojaDestino) {
-      hojaDestino.clear();
-    } else {
-      hojaDestino = spreadsheet.insertSheet(nombreHoja);
-    }
-
-    const datosNuevos = datosOrigen.map(fila =>
-      columnasSeleccionadas.map(idx => fila[idx])
-    );
-
-    hojaDestino.getRange(1, 1, datosNuevos.length, datosNuevos[0].length).setValues(datosNuevos);
-
-    const encabezado = hojaDestino.getRange(1, 1, 1, datosNuevos[0].length);
-    encabezado.setFontWeight('bold');
-    encabezado.setBackground('#34A853');
-    encabezado.setFontColor('#ffffff');
-    encabezado.setWrap(true);
-
-    for (let i = 1; i <= datosNuevos[0].length; i++) {
-      hojaDestino.autoResizeColumn(i);
-    }
-
-    hojaDestino.setFrozenRows(1);
-
-    ui.alert('✅ Éxito', `${datosNuevos[0].length} columnas copiadas a "${nombreHoja}"`, ui.ButtonSet.OK);
-
-  } catch (error) {
-    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
-    Logger.log('Error: ' + error.stack);
-  }
-}
-
-/**
  * Actualiza los datos automáticamente (sin mostrar alertas)
  */
 function actualizarDatosAutomatico() {
@@ -525,70 +341,128 @@ function actualizarDatosAutomatico() {
 }
 
 /**
- * Función auxiliar para mapear columnas con reglas especiales
+ * Mapeo de columnas específico para Intervención de Casos
+ * Mapea las columnas de KoboToolbox a las columnas de la hoja destino
  */
-function mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal) {
+function mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino) {
   const mapeoColumnas = [];
-  const columnasIgnoradas = [];
   const columnasEspeciales = [];
+  const columnasIgnoradas = [];
 
+  Logger.log('=== ENCABEZADOS ORIGEN ===');
+  encabezadosOrigen.forEach((col, idx) => {
+    Logger.log(`  [${idx}] ${col}`);
+  });
+
+  Logger.log('=== ENCABEZADOS DESTINO ===');
+  encabezadosDestino.forEach((col, idx) => {
+    Logger.log(`  [${idx}] ${col}`);
+  });
+
+  // Buscar índices en origen
+  const indiceStart = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'start'
+  );
   const indiceNombres = encabezadosOrigen.findIndex(col =>
-    col.toString().trim().toLowerCase() === 'nombres'
+    col.toString().trim().toLowerCase() === 'nombre (s)'
   );
   const indiceApellidos = encabezadosOrigen.findIndex(col =>
-    col.toString().trim().toLowerCase() === 'apellidos'
+    col.toString().trim().toLowerCase() === 'apellidos (s)'
+  );
+  const indiceCreamosID = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'creamos id'
+  );
+  const indiceTipo = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'tipo intervención de caso'
+  );
+  const indiceMotivo = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'motivo intervención de caso'
   );
 
-  const indiceNombreCompleto = encabezadosPrincipal.findIndex(col =>
-    col.toString().trim().toLowerCase() === 'nombre completo'
+  // Buscar índices en destino
+  const indiceFechaDestino = encabezadosDestino.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'fecha'
+  );
+  const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'participante'
+  );
+  const indiceTerapeutaDestino = encabezadosDestino.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'terapeuta'
+  );
+  const indiceCreemosIDDestino = encabezadosDestino.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'creemos id'
+  );
+  const indiceTipoDestino = encabezadosDestino.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'tipo'
+  );
+  const indiceMotivoDestino = encabezadosDestino.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'motivo'
   );
 
-  if (indiceNombres >= 0 && indiceApellidos >= 0 && indiceNombreCompleto >= 0) {
-    columnasEspeciales.push({
-      tipo: 'combinar',
-      origenes: [indiceNombres, indiceApellidos],
-      destino: indiceNombreCompleto,
-      nombre: 'Nombres + Apellidos → Nombre Completo'
+  Logger.log('=== ÍNDICES ENCONTRADOS ORIGEN ===');
+  Logger.log(`  start: ${indiceStart}`);
+  Logger.log(`  nombre (s): ${indiceNombres}`);
+  Logger.log(`  apellidos (s): ${indiceApellidos}`);
+  Logger.log(`  Creamos ID: ${indiceCreamosID}`);
+  Logger.log(`  Tipo intervención de caso: ${indiceTipo}`);
+  Logger.log(`  Motivo intervención de caso: ${indiceMotivo}`);
+
+  Logger.log('=== ÍNDICES ENCONTRADOS DESTINO ===');
+  Logger.log(`  Fecha: ${indiceFechaDestino}`);
+  Logger.log(`  Participante: ${indiceParticipanteDestino}`);
+  Logger.log(`  Terapeuta: ${indiceTerapeutaDestino}`);
+  Logger.log(`  Creemos ID: ${indiceCreemosIDDestino}`);
+  Logger.log(`  Tipo: ${indiceTipoDestino}`);
+  Logger.log(`  Motivo: ${indiceMotivoDestino}`);
+
+  // Mapear start → Fecha
+  if (indiceStart >= 0 && indiceFechaDestino >= 0) {
+    mapeoColumnas.push({
+      origen: indiceStart,
+      destino: indiceFechaDestino,
+      nombre: 'start → Fecha'
     });
   }
 
-  const mapeosFlexibles = {
-    'servicio': 'servicio que solicita',
-    'programa de creamos': 'programa de creamos / organización',
-    'nombre de quien deriva': 'nombre de quien deriva o refiere',
-    'derivación o referencia': 'derivación o referencia',
-    'motivo de derivación u referencia': 'motivo de derivación u referencia',
-    'teléfono': 'teléfono',
-    'dirección': 'dirección'
-  };
-
-  for (let i = 0; i < encabezadosOrigen.length; i++) {
-    const columnaOrigen = encabezadosOrigen[i].toString().trim().toLowerCase();
-
-    if ((i === indiceNombres || i === indiceApellidos) && indiceNombreCompleto >= 0) {
-      continue;
-    }
-
-    let indicePrincipal = encabezadosPrincipal.findIndex(col =>
-      col.toString().trim().toLowerCase() === columnaOrigen
-    );
-
-    if (indicePrincipal < 0 && mapeosFlexibles[columnaOrigen]) {
-      indicePrincipal = encabezadosPrincipal.findIndex(col =>
-        col.toString().trim().toLowerCase() === mapeosFlexibles[columnaOrigen]
-      );
-    }
-
-    if (indicePrincipal >= 0) {
-      mapeoColumnas.push({
-        origen: i,
-        principal: indicePrincipal,
-        nombre: encabezadosOrigen[i]
-      });
-    } else {
-      columnasIgnoradas.push(encabezadosOrigen[i]);
-    }
+  // Combinar nombre (s) + apellidos (s) → Participante
+  if (indiceNombres >= 0 && indiceApellidos >= 0 && indiceParticipanteDestino >= 0) {
+    columnasEspeciales.push({
+      tipo: 'combinar',
+      origenes: [indiceNombres, indiceApellidos],
+      destino: indiceParticipanteDestino,
+      nombre: 'nombre (s) + apellidos (s) → Participante'
+    });
   }
+
+  // Mapear Creamos ID → Creemos ID
+  if (indiceCreamosID >= 0 && indiceCreemosIDDestino >= 0) {
+    mapeoColumnas.push({
+      origen: indiceCreamosID,
+      destino: indiceCreemosIDDestino,
+      nombre: 'Creamos ID → Creemos ID'
+    });
+  }
+
+  // Mapear Tipo intervención de caso → Tipo
+  if (indiceTipo >= 0 && indiceTipoDestino >= 0) {
+    mapeoColumnas.push({
+      origen: indiceTipo,
+      destino: indiceTipoDestino,
+      nombre: 'Tipo intervención de caso → Tipo'
+    });
+  }
+
+  // Mapear Motivo intervención de caso → Motivo
+  if (indiceMotivo >= 0 && indiceMotivoDestino >= 0) {
+    mapeoColumnas.push({
+      origen: indiceMotivo,
+      destino: indiceMotivoDestino,
+      nombre: 'Motivo intervención de caso → Motivo'
+    });
+  }
+
+  // Terapeuta queda vacío por ahora (no hay campo en origen)
+  Logger.log('Nota: Campo "Terapeuta" quedará vacío (no hay campo equivalente en origen)');
 
   return { mapeoColumnas, columnasEspeciales, columnasIgnoradas };
 }
@@ -617,83 +491,89 @@ function sincronizarConHojaPrincipal() {
     }
 
     const datosOrigen = hojaOrigen.getDataRange().getValues();
-    const datosPrincipal = hojaPrincipal.getDataRange().getValues();
+    const datosDestino = hojaPrincipal.getDataRange().getValues();
 
     if (datosOrigen.length === 0) {
       ui.alert('❌ Error', 'La hoja "DatosKobo" está vacía.', ui.ButtonSet.OK);
       return;
     }
 
-    if (datosPrincipal.length === 0) {
+    if (datosDestino.length === 0) {
       ui.alert('❌ Error', `La hoja "${HOJA_DESTINO_NOMBRE}" está vacía. Debe tener al menos los encabezados.`, ui.ButtonSet.OK);
       return;
     }
 
     const encabezadosOrigen = datosOrigen[0];
-    const encabezadosPrincipal = datosPrincipal[0];
+    const encabezadosDestino = datosDestino[0];
 
     const { mapeoColumnas, columnasEspeciales, columnasIgnoradas } =
-      mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal);
+      mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino);
 
+    Logger.log(`\n=== RESUMEN DE MAPEO ===`);
     Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}`);
     Logger.log(`Columnas especiales: ${columnasEspeciales.length}`);
     Logger.log(`Columnas ignoradas: ${columnasIgnoradas.length}`);
 
-    Logger.log('=== MAPEO DE COLUMNAS ===');
+    Logger.log('\n=== MAPEO DETALLADO ===');
     mapeoColumnas.forEach(m => {
-      Logger.log(`  "${encabezadosOrigen[m.origen]}" → "${encabezadosPrincipal[m.principal]}"`);
+      Logger.log(`  ✓ ${m.nombre}`);
     });
     columnasEspeciales.forEach(e => {
-      Logger.log(`  [ESPECIAL] ${e.nombre}`);
+      Logger.log(`  ✓ [ESPECIAL] ${e.nombre}`);
     });
-    if (columnasIgnoradas.length > 0) {
-      Logger.log('Columnas ignoradas: ' + columnasIgnoradas.join(', '));
-    }
 
+    // Detectar filas nuevas usando Participante como identificador único
     const datosExistentes = new Set();
-    const indiceTelefonoDestino = encabezadosPrincipal.findIndex(col =>
-      col.toString().trim().toLowerCase() === 'teléfono'
+    const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'participante'
     );
 
-    for (let i = 1; i < datosPrincipal.length; i++) {
-      if (indiceTelefonoDestino >= 0) {
-        const telefono = datosPrincipal[i][indiceTelefonoDestino];
-        if (telefono) {
-          datosExistentes.add(telefono.toString().trim());
+    for (let i = 1; i < datosDestino.length; i++) {
+      if (indiceParticipanteDestino >= 0) {
+        const participante = datosDestino[i][indiceParticipanteDestino];
+        if (participante) {
+          datosExistentes.add(participante.toString().trim().toLowerCase());
         }
       }
     }
 
+    Logger.log(`\nDatos existentes: ${datosExistentes.size} participantes`);
+
     const filasNuevas = [];
-    const indiceTelefonoOrigen = encabezadosOrigen.findIndex(col =>
-      col.toString().trim().toLowerCase() === 'teléfono'
-    );
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
 
-      const telefono = indiceTelefonoOrigen >= 0 ? filaOrigen[indiceTelefonoOrigen] : '';
-      const esNueva = !telefono || !datosExistentes.has(telefono.toString().trim());
+      // Crear fila vacía con todas las columnas del destino
+      const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
-      if (esNueva) {
-        const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
+      // Mapear columnas normales
+      mapeoColumnas.forEach(mapeo => {
+        nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
+      });
 
-        mapeoColumnas.forEach(mapeo => {
-          nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
-        });
+      // Aplicar mapeos especiales (combinar nombre + apellidos)
+      columnasEspeciales.forEach(especial => {
+        if (especial.tipo === 'combinar') {
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
+          nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
+        }
+      });
 
-        columnasEspeciales.forEach(especial => {
-          if (especial.tipo === 'combinar') {
-            const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
-            nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
-          }
-        });
+      // Verificar si es duplicado
+      const participante = nuevaFila[indiceParticipanteDestino];
+      const esDuplicado = participante && datosExistentes.has(participante.toString().trim().toLowerCase());
 
+      if (!esDuplicado) {
         filasNuevas.push(nuevaFila);
+        // Agregar al set para evitar duplicados en la misma sincronización
+        if (participante) {
+          datosExistentes.add(participante.toString().trim().toLowerCase());
+        }
       }
     }
 
-    Logger.log(`Filas nuevas detectadas: ${filasNuevas.length}`);
+    Logger.log(`\nFilas nuevas detectadas: ${filasNuevas.length}`);
 
     if (filasNuevas.length === 0) {
       ui.alert(
@@ -704,12 +584,13 @@ function sincronizarConHojaPrincipal() {
       return;
     }
 
-    // CORRECCIÓN: Usar función mejorada para encontrar última fila con datos
+    // Encontrar última fila con datos reales
     const ultimaFila = encontrarUltimaFilaConDatos(hojaPrincipal);
     Logger.log(`Última fila con datos: ${ultimaFila}`);
+    Logger.log(`Insertando en fila: ${ultimaFila + 1}`);
 
     // Insertar justo después de la última fila con datos
-    hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosPrincipal.length).setValues(filasNuevas);
+    hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosDestino.length).setValues(filasNuevas);
 
     const propiedades = PropertiesService.getScriptProperties();
     propiedades.setProperty('ULTIMA_SINCRONIZACION', new Date().toLocaleString('es-ES'));
@@ -718,24 +599,15 @@ function sincronizarConHojaPrincipal() {
     let mensaje = `✅ Se agregaron ${filasNuevas.length} filas nuevas a "${HOJA_DESTINO_NOMBRE}"\n\n`;
     mensaje += `✓ Inserción en fila: ${ultimaFila + 1}\n`;
     mensaje += `✓ Columnas mapeadas: ${mapeoColumnas.length}\n`;
-    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n`;
+    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n\n`;
 
-    if (columnasEspeciales.length > 0) {
-      mensaje += `\n📋 Mapeos especiales:\n`;
-      columnasEspeciales.forEach(e => {
-        mensaje += `  • ${e.nombre}\n`;
-      });
-    }
-
-    if (columnasIgnoradas.length > 0) {
-      mensaje += `\n⚠️ Columnas ignoradas: ${columnasIgnoradas.length}\n`;
-      mensaje += `(Estas columnas no existen en "Lista de Espera")\n`;
-      const primerasIgnoradas = columnasIgnoradas.slice(0, 5);
-      primerasIgnoradas.forEach(col => mensaje += `  • ${col}\n`);
-      if (columnasIgnoradas.length > 5) {
-        mensaje += `  ... y ${columnasIgnoradas.length - 5} más`;
-      }
-    }
+    mensaje += `📋 Mapeo aplicado:\n`;
+    mapeoColumnas.forEach(m => {
+      mensaje += `  • ${m.nombre}\n`;
+    });
+    columnasEspeciales.forEach(e => {
+      mensaje += `  • ${e.nombre}\n`;
+    });
 
     ui.alert('✅ Sincronización exitosa', mensaje, ui.ButtonSet.OK);
 
@@ -755,7 +627,7 @@ function sincronizacionInicial() {
   try {
     const confirmacion = ui.alert(
       '⚠️ Sincronización Inicial',
-      'Esto enviará TODOS los datos de DatosKobo a "Lista de Espera" sin verificar duplicados.\n\n' +
+      'Esto enviará TODOS los datos de DatosKobo a "Intervención de casos" sin verificar duplicados.\n\n' +
       '⚠️ ADVERTENCIA: Si los datos ya existen, se duplicarán.\n\n' +
       '¿Deseas continuar?',
       ui.ButtonSet.YES_NO
@@ -781,48 +653,37 @@ function sincronizacionInicial() {
     }
 
     const datosOrigen = hojaOrigen.getDataRange().getValues();
-    const datosPrincipal = hojaPrincipal.getDataRange().getValues();
+    const datosDestino = hojaPrincipal.getDataRange().getValues();
 
     if (datosOrigen.length === 0 || datosOrigen.length === 1) {
       ui.alert('❌ Error', 'La hoja "DatosKobo" está vacía o solo tiene encabezados.', ui.ButtonSet.OK);
       return;
     }
 
-    if (datosPrincipal.length === 0) {
+    if (datosDestino.length === 0) {
       ui.alert('❌ Error', `La hoja "${HOJA_DESTINO_NOMBRE}" está vacía. Debe tener al menos los encabezados.`, ui.ButtonSet.OK);
       return;
     }
 
     const encabezadosOrigen = datosOrigen[0];
-    const encabezadosPrincipal = datosPrincipal[0];
+    const encabezadosDestino = datosDestino[0];
 
     const { mapeoColumnas, columnasEspeciales, columnasIgnoradas } =
-      mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal);
+      mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino);
 
+    Logger.log(`\n=== RESUMEN DE MAPEO ===`);
     Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}`);
     Logger.log(`Columnas especiales: ${columnasEspeciales.length}`);
-    Logger.log(`Columnas ignoradas: ${columnasIgnoradas.length}`);
-
-    Logger.log('=== MAPEO DE COLUMNAS ===');
-    mapeoColumnas.forEach(m => {
-      Logger.log(`  "${encabezadosOrigen[m.origen]}" → "${encabezadosPrincipal[m.principal]}"`);
-    });
-    columnasEspeciales.forEach(e => {
-      Logger.log(`  [ESPECIAL] ${e.nombre}`);
-    });
-    if (columnasIgnoradas.length > 0) {
-      Logger.log('Columnas ignoradas: ' + columnasIgnoradas.join(', '));
-    }
 
     const todasLasFilas = [];
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
 
-      const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
+      const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
       mapeoColumnas.forEach(mapeo => {
-        nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
+        nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
       });
 
       columnasEspeciales.forEach(especial => {
@@ -842,11 +703,11 @@ function sincronizacionInicial() {
       return;
     }
 
-    // CORRECCIÓN: Usar función mejorada para encontrar última fila con datos
     const ultimaFila = encontrarUltimaFilaConDatos(hojaPrincipal);
     Logger.log(`Última fila con datos: ${ultimaFila}`);
+    Logger.log(`Insertando en fila: ${ultimaFila + 1}`);
 
-    hojaPrincipal.getRange(ultimaFila + 1, 1, todasLasFilas.length, encabezadosPrincipal.length).setValues(todasLasFilas);
+    hojaPrincipal.getRange(ultimaFila + 1, 1, todasLasFilas.length, encabezadosDestino.length).setValues(todasLasFilas);
 
     const propiedades = PropertiesService.getScriptProperties();
     propiedades.setProperty('ULTIMA_SINCRONIZACION', new Date().toLocaleString('es-ES'));
@@ -855,24 +716,15 @@ function sincronizacionInicial() {
     let mensaje = `✅ Se enviaron ${todasLasFilas.length} filas a "${HOJA_DESTINO_NOMBRE}"\n\n`;
     mensaje += `✓ Inserción en fila: ${ultimaFila + 1}\n`;
     mensaje += `✓ Columnas mapeadas: ${mapeoColumnas.length}\n`;
-    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n`;
+    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n\n`;
 
-    if (columnasEspeciales.length > 0) {
-      mensaje += `\n📋 Mapeos especiales:\n`;
-      columnasEspeciales.forEach(e => {
-        mensaje += `  • ${e.nombre}\n`;
-      });
-    }
-
-    if (columnasIgnoradas.length > 0) {
-      mensaje += `\n⚠️ Columnas ignoradas: ${columnasIgnoradas.length}\n`;
-      mensaje += `(Estas columnas no existen en "Lista de Espera")\n`;
-      const primerasIgnoradas = columnasIgnoradas.slice(0, 5);
-      primerasIgnoradas.forEach(col => mensaje += `  • ${col}\n`);
-      if (columnasIgnoradas.length > 5) {
-        mensaje += `  ... y ${columnasIgnoradas.length - 5} más`;
-      }
-    }
+    mensaje += `📋 Mapeo aplicado:\n`;
+    mapeoColumnas.forEach(m => {
+      mensaje += `  • ${m.nombre}\n`;
+    });
+    columnasEspeciales.forEach(e => {
+      mensaje += `  • ${e.nombre}\n`;
+    });
 
     ui.alert('✅ Sincronización Inicial Completada', mensaje, ui.ButtonSet.OK);
 
@@ -908,75 +760,70 @@ function sincronizarAutomatico() {
     }
 
     const datosOrigen = hojaOrigen.getDataRange().getValues();
-    const datosPrincipal = hojaPrincipal.getDataRange().getValues();
+    const datosDestino = hojaPrincipal.getDataRange().getValues();
 
     if (datosOrigen.length === 0) {
       Logger.log('No hay datos en DatosKobo');
       return;
     }
 
-    if (datosPrincipal.length === 0) {
+    if (datosDestino.length === 0) {
       Logger.log('La hoja destino está vacía');
       return;
     }
 
     const encabezadosOrigen = datosOrigen[0];
-    const encabezadosPrincipal = datosPrincipal[0];
+    const encabezadosDestino = datosDestino[0];
 
-    const { mapeoColumnas, columnasEspeciales, columnasIgnoradas } =
-      mapearColumnasConReglas(encabezadosOrigen, encabezadosPrincipal);
-
-    Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}, Columnas especiales: ${columnasEspeciales.length}, Columnas ignoradas: ${columnasIgnoradas.length}`);
+    const { mapeoColumnas, columnasEspeciales } =
+      mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino);
 
     const datosExistentes = new Set();
-    const indiceTelefonoDestino = encabezadosPrincipal.findIndex(col =>
-      col.toString().trim().toLowerCase() === 'teléfono'
+    const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'participante'
     );
 
-    for (let i = 1; i < datosPrincipal.length; i++) {
-      if (indiceTelefonoDestino >= 0) {
-        const telefono = datosPrincipal[i][indiceTelefonoDestino];
-        if (telefono) {
-          datosExistentes.add(telefono.toString().trim());
+    for (let i = 1; i < datosDestino.length; i++) {
+      if (indiceParticipanteDestino >= 0) {
+        const participante = datosDestino[i][indiceParticipanteDestino];
+        if (participante) {
+          datosExistentes.add(participante.toString().trim().toLowerCase());
         }
       }
     }
 
     const filasNuevas = [];
-    const indiceTelefonoOrigen = encabezadosOrigen.findIndex(col =>
-      col.toString().trim().toLowerCase() === 'teléfono'
-    );
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
 
-      const telefono = indiceTelefonoOrigen >= 0 ? filaOrigen[indiceTelefonoOrigen] : '';
-      const esNueva = !telefono || !datosExistentes.has(telefono.toString().trim());
+      const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
-      if (esNueva) {
-        const nuevaFila = new Array(encabezadosPrincipal.length).fill('');
+      mapeoColumnas.forEach(mapeo => {
+        nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
+      });
 
-        mapeoColumnas.forEach(mapeo => {
-          nuevaFila[mapeo.principal] = filaOrigen[mapeo.origen] || '';
-        });
+      columnasEspeciales.forEach(especial => {
+        if (especial.tipo === 'combinar') {
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
+          nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
+        }
+      });
 
-        columnasEspeciales.forEach(especial => {
-          if (especial.tipo === 'combinar') {
-            const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
-            nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
-          }
-        });
+      const participante = nuevaFila[indiceParticipanteDestino];
+      const esDuplicado = participante && datosExistentes.has(participante.toString().trim().toLowerCase());
 
+      if (!esDuplicado) {
         filasNuevas.push(nuevaFila);
+        if (participante) {
+          datosExistentes.add(participante.toString().trim().toLowerCase());
+        }
       }
     }
 
     if (filasNuevas.length > 0) {
-      // CORRECCIÓN: Usar función mejorada para encontrar última fila con datos
       const ultimaFila = encontrarUltimaFilaConDatos(hojaPrincipal);
-      Logger.log(`Última fila con datos: ${ultimaFila}`);
-
-      hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosPrincipal.length).setValues(filasNuevas);
+      hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosDestino.length).setValues(filasNuevas);
 
       const propiedades = PropertiesService.getScriptProperties();
       propiedades.setProperty('ULTIMA_SINCRONIZACION', new Date().toLocaleString('es-ES'));
@@ -1040,8 +887,8 @@ function activarSincronizacionAutomatica() {
       `⚡ Los datos se sincronizarán automáticamente cada ${minutos} minutos con "${HOJA_DESTINO_NOMBRE}".\n\n` +
       `✓ Solo se agregarán datos NUEVOS\n` +
       `✓ Sincronización casi instantánea\n` +
-      `✓ Las columnas coincidentes se mapearán automáticamente\n` +
-      `✓ Las columnas que no existen en destino se IGNORARÁN`,
+      `✓ Mapeo: start→Fecha, nombre+apellidos→Participante, etc.\n` +
+      `✓ Detección de duplicados por Participante`,
       ui.ButtonSet.OK
     );
 
@@ -1099,20 +946,20 @@ function verEstadoSincronizacion() {
       }
     }
 
-    let mensaje = `📍 Hoja de destino: "${HOJA_DESTINO_NOMBRE}"\n`;
-    mensaje += `📁 Archivo destino: ${SPREADSHEET_DESTINO_ID.substring(0, 20)}...\n\n`;
+    let mensaje = `📍 Sistema: Intervención de Casos\n`;
+    mensaje += `📄 Hoja destino: "${HOJA_DESTINO_NOMBRE}"\n`;
+    mensaje += `📁 Archivo: ${SPREADSHEET_DESTINO_ID.substring(0, 20)}...\n\n`;
     mensaje += `🕒 Última sincronización: ${ultimaSincronizacion}\n`;
     mensaje += `📊 Filas agregadas: ${ultimasFilas}\n\n`;
 
     if (triggerActivo) {
       mensaje += '✅ Estado: ACTIVA (Sincronización rápida)\n\n';
       mensaje += '⚡ Los datos se sincronizan automáticamente cada pocos minutos.\n';
-      mensaje += 'Las nuevas respuestas de KoboToolbox se enviarán casi de inmediato.';
+      mensaje += '📋 Mapeo: start→Fecha, nombre+apellidos→Participante';
     } else {
       mensaje += '⚠️ Estado: INACTIVA\n\n';
-      mensaje += 'Para activar sincronización rápida:\n';
-      mensaje += 'KoboToolbox > ⚙️ Configurar > Activar Sincronización Automática\n\n';
-      mensaje += 'Recomendado: 15 minutos para sincronización casi instantánea';
+      mensaje += 'Para activar:\n';
+      mensaje += '🎯 Intervención de Casos > ⚙️ Configurar > Activar Sincronización Automática';
     }
 
     ui.alert('Estado de Sincronización', mensaje, ui.ButtonSet.OK);
