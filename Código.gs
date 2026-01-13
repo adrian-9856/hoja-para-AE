@@ -12,26 +12,45 @@ const SPREADSHEET_DESTINO_ID = "1T0YCTaiu6qxB6Hzq0nth3ZlJpCeKlGTrw2afncW11ME";
 // Nombre de la hoja de destino en el otro archivo
 const HOJA_DESTINO_NOMBRE = "Lista de Espera";
 
+// ============ CONFIGURACIÓN PARA INTERVENCIÓN DE CASOS ============
+// URL de exportación de KoboToolbox para Intervención de Casos
+const KOBO_INTERVENCION_URL = "REEMPLAZAR_CON_URL_REAL";
+
+// ID del archivo de Google Sheets para Intervención de Casos (puede ser el mismo documento)
+const SPREADSHEET_INTERVENCION_ID = "REEMPLAZAR_CON_ID_REAL";
+
+// Nombre de la hoja de destino para Intervención de Casos
+const HOJA_INTERVENCION_NOMBRE = "Intervención de casos";
+
 /**
  * Crea el menú personalizado al abrir la hoja
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('KoboToolbox')
+
+  // Menú para Lista de Espera
+  ui.createMenu('📋 Lista de Espera')
     .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
     .addItem('🔄 Actualizar Datos', 'actualizarDatosAutomatico')
     .addSeparator()
     .addItem('🔄 Sincronizar Solo Nuevos', 'sincronizarConHojaPrincipal')
     .addItem('📤 Sincronización Inicial (Enviar Todo)', 'sincronizacionInicial')
     .addSeparator()
-    .addSubMenu(ui.createMenu('📤 Copiar a Otra Hoja')
-      .addItem('Copiar Todos los Datos', 'enviarDatosAOtraHoja')
-      .addItem('Copiar Columnas Específicas', 'copiarColumnasEspecificas'))
-    .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Configurar')
       .addItem('Activar Sincronización Automática', 'activarSincronizacionAutomatica')
       .addItem('Desactivar Sincronización Automática', 'desactivarSincronizacionAutomatica')
       .addItem('Ver Estado de Sincronización', 'verEstadoSincronizacion'))
+    .addToUi();
+
+  // Menú para Intervención de Casos
+  ui.createMenu('🎯 Intervención de Casos')
+    .addItem('🔄 Sincronizar Datos 2026', 'sincronizarIntervencionCasos')
+    .addItem('📤 Sincronización Inicial 2026', 'sincronizacionInicialIntervencion')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('⚙️ Configurar')
+      .addItem('Activar Sincronización Automática', 'activarSincronizacionIntervencion')
+      .addItem('Desactivar Sincronización Automática', 'desactivarSincronizacionIntervencion')
+      .addItem('Ver Estado de Sincronización', 'verEstadoSincronizacionIntervencion'))
     .addToUi();
 }
 
@@ -1317,6 +1336,479 @@ function verEstadoSincronizacion() {
     }
 
     ui.alert('Estado de Sincronización', mensaje, ui.ButtonSet.OK);
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+
+// ============================================================================
+// FUNCIONES PARA INTERVENCIÓN DE CASOS (Solo datos 2026)
+// ============================================================================
+
+/**
+ * Verifica si una fecha es del año 2026
+ */
+function esFecha2026(fechaTexto) {
+  if (!fechaTexto) return false;
+
+  const fecha = new Date(fechaTexto);
+  if (isNaN(fecha.getTime())) return false;
+
+  return fecha.getFullYear() === 2026;
+}
+
+/**
+ * Sincroniza datos de Intervención de Casos (solo 2026)
+ */
+function sincronizarIntervencionCasos() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    // Descargar CSV de KoboToolbox
+    const response = UrlFetchApp.fetch(KOBO_INTERVENCION_URL, {
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      ui.alert('❌ Error', 'No se pudo descargar los datos de KoboToolbox', ui.ButtonSet.OK);
+      return;
+    }
+
+    const csv = response.getContentText();
+    const separador = detectarSeparador(csv);
+    let datos;
+
+    try {
+      if (separador === ',') {
+        datos = Utilities.parseCsv(csv);
+      } else {
+        datos = parsearCSV(csv, separador);
+      }
+    } catch (e) {
+      datos = parsearCSV(csv, separador);
+    }
+
+    if (!datos || datos.length === 0) {
+      ui.alert('❌ Error', 'No se encontraron datos', ui.ButtonSet.OK);
+      return;
+    }
+
+    datos = normalizarDatos(datos);
+
+    // Acceder al archivo destino
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_INTERVENCION_ID);
+    const hojaDestino = spreadsheetDestino.getSheetByName(HOJA_INTERVENCION_NOMBRE);
+
+    if (!hojaDestino) {
+      ui.alert('❌ Error', `No se encontró la hoja "${HOJA_INTERVENCION_NOMBRE}"`, ui.ButtonSet.OK);
+      return;
+    }
+
+    const datosDestino = hojaDestino.getDataRange().getValues();
+
+    if (datosDestino.length === 0) {
+      ui.alert('❌ Error', 'La hoja de destino está vacía', ui.ButtonSet.OK);
+      return;
+    }
+
+    const encabezadosOrigen = datos[0];
+    const encabezadosDestino = datosDestino[0];
+
+    // Buscar columna de fecha
+    const indiceFecha = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'fecha'
+    );
+
+    if (indiceFecha < 0) {
+      ui.alert('❌ Error', 'No se encontró la columna "Fecha" en los datos', ui.ButtonSet.OK);
+      return;
+    }
+
+    // Mapear columnas
+    const mapeoColumnas = [];
+    for (let i = 0; i < encabezadosOrigen.length; i++) {
+      const columnaOrigen = encabezadosOrigen[i].toString().trim().toLowerCase();
+      const indiceDestino = encabezadosDestino.findIndex(col =>
+        col.toString().trim().toLowerCase() === columnaOrigen
+      );
+
+      if (indiceDestino >= 0) {
+        mapeoColumnas.push({ origen: i, destino: indiceDestino });
+      }
+    }
+
+    // Buscar columna de Participante para identificar duplicados
+    const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'participante'
+    );
+
+    const datosExistentes = new Set();
+    if (indiceParticipanteDestino >= 0) {
+      for (let i = 1; i < datosDestino.length; i++) {
+        const participante = datosDestino[i][indiceParticipanteDestino];
+        if (participante) {
+          datosExistentes.add(participante.toString().trim());
+        }
+      }
+    }
+
+    // Filtrar solo datos de 2026 y nuevos
+    const filasNuevas = [];
+    let registrosFiltrados = 0;
+
+    for (let i = 1; i < datos.length; i++) {
+      const filaOrigen = datos[i];
+      const fecha = filaOrigen[indiceFecha];
+
+      // Verificar que sea del 2026
+      if (!esFecha2026(fecha)) {
+        registrosFiltrados++;
+        continue;
+      }
+
+      // Verificar que no sea duplicado
+      if (indiceParticipanteDestino >= 0) {
+        const indiceParticipanteOrigen = encabezadosOrigen.findIndex(col =>
+          col.toString().trim().toLowerCase() === 'participante'
+        );
+
+        if (indiceParticipanteOrigen >= 0) {
+          const participante = filaOrigen[indiceParticipanteOrigen];
+          if (participante && datosExistentes.has(participante.toString().trim())) {
+            continue;
+          }
+        }
+      }
+
+      // Crear fila mapeada
+      const nuevaFila = new Array(encabezadosDestino.length).fill('');
+      mapeoColumnas.forEach(mapeo => {
+        nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
+      });
+
+      filasNuevas.push(nuevaFila);
+    }
+
+    if (filasNuevas.length === 0) {
+      ui.alert(
+        'ℹ️ Sin datos nuevos',
+        `No hay datos nuevos del 2026 para sincronizar.\n\n${registrosFiltrados} registros filtrados (no son del 2026)`,
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+
+    // Agregar filas nuevas
+    const ultimaFila = hojaDestino.getLastRow();
+    hojaDestino.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosDestino.length).setValues(filasNuevas);
+
+    // Registrar sincronización
+    const propiedades = PropertiesService.getScriptProperties();
+    propiedades.setProperty('ULTIMA_SINCRONIZACION_INTERVENCION', new Date().toLocaleString('es-ES'));
+    propiedades.setProperty('ULTIMA_SINCRONIZACION_INTERVENCION_FILAS', filasNuevas.length.toString());
+
+    ui.alert(
+      '✅ Sincronización exitosa',
+      `Se agregaron ${filasNuevas.length} registros del 2026 a "${HOJA_INTERVENCION_NOMBRE}"\n\n` +
+      `${registrosFiltrados} registros filtrados (no son del 2026)`,
+      ui.ButtonSet.OK
+    );
+
+  } catch (error) {
+    ui.alert('❌ Error', 'Error al sincronizar: ' + error.message, ui.ButtonSet.OK);
+    Logger.log('Error: ' + error.stack);
+  }
+}
+
+/**
+ * Sincronización inicial de Intervención de Casos (solo 2026)
+ */
+function sincronizacionInicialIntervencion() {
+  const ui = SpreadsheetApp.getUi();
+
+  const confirmacion = ui.alert(
+    '⚠️ Sincronización Inicial - Solo 2026',
+    'Esto enviará TODOS los datos del 2026 a "Intervención de casos".\n\n¿Deseas continuar?',
+    ui.ButtonSet.YES_NO
+  );
+
+  if (confirmacion !== ui.Button.YES) {
+    return;
+  }
+
+  sincronizarIntervencionCasos();
+}
+
+/**
+ * Sincronización automática de Intervención de Casos (silenciosa, solo 2026)
+ */
+function sincronizarAutomaticoIntervencion() {
+  try {
+    // Descargar CSV
+    const response = UrlFetchApp.fetch(KOBO_INTERVENCION_URL, {
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      Logger.log('Error al descargar datos de Intervención de Casos');
+      return;
+    }
+
+    const csv = response.getContentText();
+    const separador = detectarSeparador(csv);
+    let datos;
+
+    try {
+      if (separador === ',') {
+        datos = Utilities.parseCsv(csv);
+      } else {
+        datos = parsearCSV(csv, separador);
+      }
+    } catch (e) {
+      datos = parsearCSV(csv, separador);
+    }
+
+    if (!datos || datos.length === 0) {
+      Logger.log('No hay datos para sincronizar');
+      return;
+    }
+
+    datos = normalizarDatos(datos);
+
+    // Acceder al archivo destino
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_INTERVENCION_ID);
+    const hojaDestino = spreadsheetDestino.getSheetByName(HOJA_INTERVENCION_NOMBRE);
+
+    if (!hojaDestino) {
+      Logger.log('No se encontró la hoja de destino');
+      return;
+    }
+
+    const datosDestino = hojaDestino.getDataRange().getValues();
+
+    if (datosDestino.length === 0) {
+      Logger.log('La hoja de destino está vacía');
+      return;
+    }
+
+    const encabezadosOrigen = datos[0];
+    const encabezadosDestino = datosDestino[0];
+
+    // Buscar columna de fecha
+    const indiceFecha = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'fecha'
+    );
+
+    if (indiceFecha < 0) {
+      Logger.log('No se encontró la columna Fecha');
+      return;
+    }
+
+    // Mapear columnas
+    const mapeoColumnas = [];
+    for (let i = 0; i < encabezadosOrigen.length; i++) {
+      const columnaOrigen = encabezadosOrigen[i].toString().trim().toLowerCase();
+      const indiceDestino = encabezadosDestino.findIndex(col =>
+        col.toString().trim().toLowerCase() === columnaOrigen
+      );
+
+      if (indiceDestino >= 0) {
+        mapeoColumnas.push({ origen: i, destino: indiceDestino });
+      }
+    }
+
+    // Buscar duplicados
+    const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'participante'
+    );
+
+    const datosExistentes = new Set();
+    if (indiceParticipanteDestino >= 0) {
+      for (let i = 1; i < datosDestino.length; i++) {
+        const participante = datosDestino[i][indiceParticipanteDestino];
+        if (participante) {
+          datosExistentes.add(participante.toString().trim());
+        }
+      }
+    }
+
+    // Filtrar solo datos de 2026 y nuevos
+    const filasNuevas = [];
+
+    for (let i = 1; i < datos.length; i++) {
+      const filaOrigen = datos[i];
+      const fecha = filaOrigen[indiceFecha];
+
+      if (!esFecha2026(fecha)) continue;
+
+      // Verificar duplicado
+      if (indiceParticipanteDestino >= 0) {
+        const indiceParticipanteOrigen = encabezadosOrigen.findIndex(col =>
+          col.toString().trim().toLowerCase() === 'participante'
+        );
+
+        if (indiceParticipanteOrigen >= 0) {
+          const participante = filaOrigen[indiceParticipanteOrigen];
+          if (participante && datosExistentes.has(participante.toString().trim())) {
+            continue;
+          }
+        }
+      }
+
+      // Crear fila mapeada
+      const nuevaFila = new Array(encabezadosDestino.length).fill('');
+      mapeoColumnas.forEach(mapeo => {
+        nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
+      });
+
+      filasNuevas.push(nuevaFila);
+    }
+
+    if (filasNuevas.length > 0) {
+      const ultimaFila = hojaDestino.getLastRow();
+      hojaDestino.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosDestino.length).setValues(filasNuevas);
+
+      const propiedades = PropertiesService.getScriptProperties();
+      propiedades.setProperty('ULTIMA_SINCRONIZACION_INTERVENCION', new Date().toLocaleString('es-ES'));
+      propiedades.setProperty('ULTIMA_SINCRONIZACION_INTERVENCION_FILAS', filasNuevas.length.toString());
+
+      Logger.log(`Intervención de Casos: ${filasNuevas.length} registros nuevos del 2026`);
+    } else {
+      Logger.log('Intervención de Casos: sin datos nuevos del 2026');
+    }
+
+  } catch (error) {
+    Logger.log('Error en sincronización automática de Intervención: ' + error.message);
+  }
+}
+
+/**
+ * Activa la sincronización automática para Intervención de Casos
+ */
+function activarSincronizacionIntervencion() {
+  const ui = SpreadsheetApp.getUi();
+
+  const respuesta = ui.prompt(
+    'Activar Sincronización Automática - Intervención de Casos',
+    '¿Cada cuántos MINUTOS deseas sincronizar datos del 2026?\n\n' +
+    '⚡ SINCRONIZACIÓN RÁPIDA:\n' +
+    '5 = Cada 5 minutos\n' +
+    '10 = Cada 10 minutos\n' +
+    '15 = Cada 15 minutos (recomendado)\n' +
+    '30 = Cada 30 minutos\n\n' +
+    'Ingresa el número de minutos:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (respuesta.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+
+  const minutos = parseInt(respuesta.getResponseText().trim());
+
+  if (![5, 10, 15, 30].includes(minutos)) {
+    ui.alert('❌ Error', 'Por favor ingresa: 5, 10, 15 o 30 minutos', ui.ButtonSet.OK);
+    return;
+  }
+
+  try {
+    // Eliminar triggers existentes
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'sincronizarAutomaticoIntervencion') {
+        ScriptApp.deleteTrigger(trigger);
+      }
+    }
+
+    // Crear nuevo trigger
+    ScriptApp.newTrigger('sincronizarAutomaticoIntervencion')
+      .timeBased()
+      .everyMinutes(minutos)
+      .create();
+
+    ui.alert(
+      '✅ Sincronización Activada',
+      `⚡ Los datos del 2026 se sincronizarán automáticamente cada ${minutos} minutos con "${HOJA_INTERVENCION_NOMBRE}".\n\n` +
+      `✓ Solo se agregarán datos del 2026\n` +
+      `✓ Solo datos NUEVOS\n` +
+      `✓ Sincronización casi instantánea`,
+      ui.ButtonSet.OK
+    );
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Desactiva la sincronización automática de Intervención de Casos
+ */
+function desactivarSincronizacionIntervencion() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    let eliminados = 0;
+
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'sincronizarAutomaticoIntervencion') {
+        ScriptApp.deleteTrigger(trigger);
+        eliminados++;
+      }
+    }
+
+    if (eliminados > 0) {
+      ui.alert('✅ Desactivado', 'La sincronización automática de Intervención de Casos ha sido desactivada', ui.ButtonSet.OK);
+    } else {
+      ui.alert('ℹ️ Información', 'No había sincronización automática activa', ui.ButtonSet.OK);
+    }
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Muestra el estado de la sincronización de Intervención de Casos
+ */
+function verEstadoSincronizacionIntervencion() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const propiedades = PropertiesService.getScriptProperties();
+    const ultimaSincronizacion = propiedades.getProperty('ULTIMA_SINCRONIZACION_INTERVENCION') || 'Nunca';
+    const ultimasFilas = propiedades.getProperty('ULTIMA_SINCRONIZACION_INTERVENCION_FILAS') || '0';
+
+    const triggers = ScriptApp.getProjectTriggers();
+    let triggerActivo = null;
+
+    for (let trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'sincronizarAutomaticoIntervencion') {
+        triggerActivo = trigger;
+        break;
+      }
+    }
+
+    let mensaje = `📍 Hoja de destino: "${HOJA_INTERVENCION_NOMBRE}"\n`;
+    mensaje += `📁 Archivo destino: ${SPREADSHEET_INTERVENCION_ID.substring(0, 20)}...\n`;
+    mensaje += `📅 Filtro: Solo datos del 2026\n\n`;
+    mensaje += `🕒 Última sincronización: ${ultimaSincronizacion}\n`;
+    mensaje += `📊 Registros agregados: ${ultimasFilas}\n\n`;
+
+    if (triggerActivo) {
+      mensaje += '✅ Estado: ACTIVA (Sincronización rápida)\n\n';
+      mensaje += '⚡ Los datos del 2026 se sincronizan automáticamente cada pocos minutos.\n';
+      mensaje += 'Los nuevos registros de KoboToolbox se enviarán casi de inmediato.';
+    } else {
+      mensaje += '⚠️ Estado: INACTIVA\n\n';
+      mensaje += 'Para activar sincronización rápida:\n';
+      mensaje += '🎯 Intervención de Casos > ⚙️ Configurar > Activar Sincronización Automática\n\n';
+      mensaje += 'Recomendado: 15 minutos';
+    }
+
+    ui.alert('Estado de Sincronización - Intervención de Casos', mensaje, ui.ButtonSet.OK);
 
   } catch (error) {
     ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
