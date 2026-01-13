@@ -14,10 +14,10 @@ const HOJA_DESTINO_NOMBRE = "Lista de Espera";
 
 // ============ CONFIGURACIÓN PARA INTERVENCIÓN DE CASOS ============
 // URL de exportación de KoboToolbox para Intervención de Casos
-const KOBO_INTERVENCION_URL = "REEMPLAZAR_CON_URL_REAL";
+const KOBO_INTERVENCION_URL = "https://kf.kobotoolbox.org/api/v2/assets/avnPVj8iEwvfwUkySWcMAJ/export-settings/esiNV5nenKxfDh9wNmZD6kC/data.csv";
 
-// ID del archivo de Google Sheets para Intervención de Casos (puede ser el mismo documento)
-const SPREADSHEET_INTERVENCION_ID = "REEMPLAZAR_CON_ID_REAL";
+// ID del archivo de Google Sheets para Intervención de Casos (el mismo documento)
+const SPREADSHEET_INTERVENCION_ID = "1T0YCTaiu6qxB6Hzq0nth3ZlJpCeKlGTrw2afncW11ME";
 
 // Nombre de la hoja de destino para Intervención de Casos
 const HOJA_INTERVENCION_NOMBRE = "Intervención de casos";
