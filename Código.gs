@@ -33,6 +33,43 @@ function encontrarUltimaFilaConDatos(hoja) {
 }
 
 /**
+ * Verifica si una fecha es del año 2026
+ */
+function esFechaDel2026(fecha) {
+  if (!fecha) return false;
+
+  try {
+    let fechaObj;
+
+    // Si ya es un objeto Date
+    if (fecha instanceof Date) {
+      fechaObj = fecha;
+    }
+    // Si es un string
+    else if (typeof fecha === 'string') {
+      fechaObj = new Date(fecha);
+    }
+    // Si es un número (timestamp)
+    else if (typeof fecha === 'number') {
+      fechaObj = new Date(fecha);
+    }
+    else {
+      return false;
+    }
+
+    // Verificar que sea una fecha válida
+    if (isNaN(fechaObj.getTime())) {
+      return false;
+    }
+
+    return fechaObj.getFullYear() === 2026;
+  } catch (e) {
+    Logger.log(`Error al verificar fecha: ${e.message}`);
+    return false;
+  }
+}
+
+/**
  * Crea el menú personalizado al abrir la hoja
  */
 function onOpen() {
@@ -41,8 +78,10 @@ function onOpen() {
     .addItem('📥 Importar Datos', 'importarCSVdesdeKobo')
     .addItem('🔄 Actualizar Datos', 'actualizarDatosAutomatico')
     .addSeparator()
-    .addItem('🔄 Sincronizar Solo Nuevos', 'sincronizarConHojaPrincipal')
-    .addItem('📤 Sincronización Inicial (Enviar Todo)', 'sincronizacionInicial')
+    .addItem('🔄 Sincronizar Solo Nuevos (2026)', 'sincronizarConHojaPrincipal')
+    .addItem('📤 Sincronización Inicial (Enviar Todo 2026)', 'sincronizacionInicial')
+    .addSeparator()
+    .addItem('🧹 Limpiar Hoja (Solo Encabezados)', 'limpiarHojaIntervencionCasos')
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Configurar')
       .addItem('Activar Sincronización Automática', 'activarSincronizacionAutomatica')
@@ -546,10 +585,25 @@ function sincronizarConHojaPrincipal() {
 
     Logger.log(`\nDatos existentes: ${datosExistentes.size} participantes`);
 
+    // Encontrar índice de la columna de fecha en origen (start)
+    const indiceFechaOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'start'
+    );
+
     const filasNuevas = [];
+    let filasExcluidasPorFecha = 0;
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
+
+      // FILTRO: Verificar si la fecha es del 2026
+      if (indiceFechaOrigen >= 0) {
+        const fechaRegistro = filaOrigen[indiceFechaOrigen];
+        if (!esFechaDel2026(fechaRegistro)) {
+          filasExcluidasPorFecha++;
+          continue; // Saltar esta fila si no es del 2026
+        }
+      }
 
       // Crear fila vacía con todas las columnas del destino
       const nuevaFila = new Array(encabezadosDestino.length).fill('');
@@ -587,6 +641,8 @@ function sincronizarConHojaPrincipal() {
       }
     }
 
+    Logger.log(`\nFilas excluidas (no son 2026): ${filasExcluidasPorFecha}`);
+
     Logger.log(`\nFilas nuevas detectadas: ${filasNuevas.length}`);
 
     if (filasNuevas.length === 0) {
@@ -612,16 +668,12 @@ function sincronizarConHojaPrincipal() {
 
     let mensaje = `✅ Se agregaron ${filasNuevas.length} filas nuevas a "${HOJA_DESTINO_NOMBRE}"\n\n`;
     mensaje += `✓ Inserción en fila: ${ultimaFila + 1}\n`;
+    mensaje += `✓ Solo datos del 2026\n`;
+    if (filasExcluidasPorFecha > 0) {
+      mensaje += `✓ Excluidas ${filasExcluidasPorFecha} filas (otros años)\n`;
+    }
     mensaje += `✓ Columnas mapeadas: ${mapeoColumnas.length}\n`;
-    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n\n`;
-
-    mensaje += `📋 Mapeo aplicado:\n`;
-    mapeoColumnas.forEach(m => {
-      mensaje += `  • ${m.nombre}\n`;
-    });
-    columnasEspeciales.forEach(e => {
-      mensaje += `  • ${e.nombre}\n`;
-    });
+    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n`;
 
     ui.alert('✅ Sincronización exitosa', mensaje, ui.ButtonSet.OK);
 
@@ -689,10 +741,25 @@ function sincronizacionInicial() {
     Logger.log(`Columnas mapeadas: ${mapeoColumnas.length}`);
     Logger.log(`Columnas especiales: ${columnasEspeciales.length}`);
 
+    // Encontrar índice de la columna de fecha en origen (start)
+    const indiceFechaOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'start'
+    );
+
     const todasLasFilas = [];
+    let filasExcluidasPorFecha = 0;
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
+
+      // FILTRO: Verificar si la fecha es del 2026
+      if (indiceFechaOrigen >= 0) {
+        const fechaRegistro = filaOrigen[indiceFechaOrigen];
+        if (!esFechaDel2026(fechaRegistro)) {
+          filasExcluidasPorFecha++;
+          continue; // Saltar esta fila si no es del 2026
+        }
+      }
 
       const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
@@ -717,6 +784,8 @@ function sincronizacionInicial() {
       todasLasFilas.push(nuevaFila);
     }
 
+    Logger.log(`\nFilas excluidas (no son 2026): ${filasExcluidasPorFecha}`);
+
     Logger.log(`Total de filas a enviar: ${todasLasFilas.length}`);
 
     if (todasLasFilas.length === 0) {
@@ -736,6 +805,10 @@ function sincronizacionInicial() {
 
     let mensaje = `✅ Se enviaron ${todasLasFilas.length} filas a "${HOJA_DESTINO_NOMBRE}"\n\n`;
     mensaje += `✓ Inserción en fila: ${ultimaFila + 1}\n`;
+    mensaje += `✓ Solo datos del 2026\n`;
+    if (filasExcluidasPorFecha > 0) {
+      mensaje += `✓ Excluidas ${filasExcluidasPorFecha} filas (otros años)\n`;
+    }
     mensaje += `✓ Columnas mapeadas: ${mapeoColumnas.length}\n`;
     mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n\n`;
 
@@ -813,10 +886,23 @@ function sincronizarAutomatico() {
       }
     }
 
+    // Encontrar índice de la columna de fecha en origen (start)
+    const indiceFechaOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'start'
+    );
+
     const filasNuevas = [];
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
+
+      // FILTRO: Verificar si la fecha es del 2026
+      if (indiceFechaOrigen >= 0) {
+        const fechaRegistro = filaOrigen[indiceFechaOrigen];
+        if (!esFechaDel2026(fechaRegistro)) {
+          continue; // Saltar esta fila si no es del 2026
+        }
+      }
 
       const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
@@ -991,6 +1077,48 @@ function verEstadoSincronizacion() {
     }
 
     ui.alert('Estado de Sincronización', mensaje, ui.ButtonSet.OK);
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Limpia todas las filas vacías manteniendo solo encabezados
+ */
+function limpiarHojaIntervencionCasos() {
+  const ui = SpreadsheetApp.getUi();
+
+  const confirmacion = ui.alert(
+    '⚠️ Limpiar Intervención de Casos',
+    '¿Estás seguro que deseas ELIMINAR todas las filas?\n\n' +
+    'Esto NO eliminará los encabezados.\n' +
+    'Solo eliminará todas las filas de datos.\n\n' +
+    '⚠️ Esta acción NO se puede deshacer.',
+    ui.ButtonSet.YES_NO
+  );
+
+  if (confirmacion !== ui.Button.YES) {
+    return;
+  }
+
+  try {
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID);
+    const hoja = spreadsheetDestino.getSheetByName(HOJA_DESTINO_NOMBRE);
+
+    if (!hoja) {
+      ui.alert('❌ Error', `No se encontró la hoja "${HOJA_DESTINO_NOMBRE}"`, ui.ButtonSet.OK);
+      return;
+    }
+
+    const ultimaFila = hoja.getMaxRows();
+
+    // Si hay más de 1 fila (encabezados), eliminar el resto
+    if (ultimaFila > 1) {
+      hoja.deleteRows(2, ultimaFila - 1);
+    }
+
+    ui.alert('✅ Limpieza exitosa', `Se eliminaron todas las filas de datos.\nSolo quedan los encabezados en "${HOJA_DESTINO_NOMBRE}".`, ui.ButtonSet.OK);
 
   } catch (error) {
     ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
