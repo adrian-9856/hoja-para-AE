@@ -67,6 +67,66 @@ function encontrarUltimaFilaConDatosDeriv(hoja) {
 }
 
 /**
+ * ARCHIVO Y LIMPIEZA AUTOMÁTICA
+ * Mueve los datos sincronizados a una hoja de archivo y limpia DatosKoboDeriv
+ * Esto asegura que DatosKoboDeriv solo tenga datos NUEVOS (no sincronizados)
+ */
+function archivarYLimpiarDeriv() {
+  try {
+    const hojaActual = SpreadsheetApp.getActiveSpreadsheet();
+    const hojaDatosKobo = hojaActual.getSheetByName('DatosKoboDeriv');
+
+    if (!hojaDatosKobo) {
+      Logger.log('[Derivaciones Archivo] No se encuentra la hoja DatosKoboDeriv');
+      return false;
+    }
+
+    const datos = hojaDatosKobo.getDataRange().getValues();
+
+    if (datos.length <= 1) {
+      Logger.log('[Derivaciones Archivo] No hay datos para archivar (solo encabezados)');
+      return true;
+    }
+
+    // Crear o obtener hoja de Archivo
+    let hojaArchivo = hojaActual.getSheetByName('Archivo_Derivaciones');
+    if (!hojaArchivo) {
+      Logger.log('[Derivaciones Archivo] Creando hoja Archivo_Derivaciones...');
+      hojaArchivo = hojaActual.insertSheet('Archivo_Derivaciones');
+      // Agregar encabezados
+      hojaArchivo.getRange(1, 1, 1, datos[0].length).setValues([datos[0]]);
+      Logger.log('[Derivaciones Archivo] ✅ Hoja creada con encabezados');
+    }
+
+    // Obtener los datos a archivar (todo excepto encabezados)
+    const datosParaArchivar = datos.slice(1);
+
+    if (datosParaArchivar.length > 0) {
+      // Encontrar última fila en archivo
+      const ultimaFilaArchivo = encontrarUltimaFilaConDatosDeriv(hojaArchivo);
+
+      // Agregar datos al archivo
+      hojaArchivo.getRange(ultimaFilaArchivo + 1, 1, datosParaArchivar.length, datos[0].length)
+        .setValues(datosParaArchivar);
+
+      Logger.log(`[Derivaciones Archivo] ✅ ${datosParaArchivar.length} filas archivadas en fila ${ultimaFilaArchivo + 1}`);
+
+      // LIMPIAR DatosKoboDeriv - dejar solo encabezados
+      if (datos.length > 1) {
+        hojaDatosKobo.getRange(2, 1, datos.length - 1, datos[0].length).clearContent();
+        Logger.log('[Derivaciones Archivo] ✅ DatosKoboDeriv limpiado (solo encabezados)');
+      }
+    }
+
+    return true;
+
+  } catch (error) {
+    Logger.log(`[Derivaciones Archivo] ❌ Error: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Crea el menú personalizado al abrir la hoja
  */
 function onOpenDerivaciones() {
@@ -77,6 +137,8 @@ function onOpenDerivaciones() {
     .addSeparator()
     .addItem('🔄 Sincronizar Solo Nuevos', 'sincronizarConHojaPrincipalDeriv')
     .addItem('📤 Sincronización Inicial (Enviar Todo)', 'sincronizacionInicialDeriv')
+    .addSeparator()
+    .addItem('🗄️ Archivar y Limpiar Datos', 'archivarYLimpiarDeriv')
     .addSeparator()
     .addItem('🧹 Limpiar Hoja (Solo Encabezados)', 'limpiarHojaListaDeEspera')
     .addSeparator()
@@ -643,6 +705,13 @@ function sincronizarConHojaPrincipalDeriv() {
 
     ui.alert('✅ Sincronización exitosa', mensaje, ui.ButtonSet.OK);
 
+    // ARCHIVAR Y LIMPIAR automáticamente después de sincronizar
+    Logger.log('[Derivaciones] Archivando y limpiando datos...');
+    const archivoExitoso = archivarYLimpiarDeriv();
+    if (archivoExitoso) {
+      Logger.log('[Derivaciones] ✅ Datos archivados y DatosKoboDeriv limpiado');
+    }
+
   } catch (error) {
     ui.alert('❌ Error', 'Error al sincronizar: ' + error.message, ui.ButtonSet.OK);
     Logger.log('[Derivaciones] Error: ' + error.stack);
@@ -883,6 +952,10 @@ function sincronizarAutomaticoDeriv() {
       propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS_DERIV', filasNuevas.length.toString());
 
       Logger.log(`[Derivaciones] Sincronización automática: ${filasNuevas.length} filas nuevas en fila ${ultimaFila + 1}`);
+
+      // ARCHIVAR Y LIMPIAR automáticamente después de sincronizar
+      Logger.log('[Derivaciones Auto] Archivando y limpiando datos...');
+      archivarYLimpiarDeriv();
     } else {
       Logger.log('[Derivaciones] Sincronización automática: sin datos nuevos');
     }

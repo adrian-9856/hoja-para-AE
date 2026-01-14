@@ -70,6 +70,66 @@ function esFechaDel2026(fecha) {
 }
 
 /**
+ * ARCHIVO Y LIMPIEZA AUTOMÁTICA
+ * Mueve los datos sincronizados a una hoja de archivo y limpia DatosKobo
+ * Esto asegura que DatosKobo solo tenga datos NUEVOS (no sincronizados)
+ */
+function archivarYLimpiar() {
+  try {
+    const hojaActual = SpreadsheetApp.getActiveSpreadsheet();
+    const hojaDatosKobo = hojaActual.getSheetByName('DatosKobo');
+
+    if (!hojaDatosKobo) {
+      Logger.log('[Casos Archivo] No se encuentra la hoja DatosKobo');
+      return false;
+    }
+
+    const datos = hojaDatosKobo.getDataRange().getValues();
+
+    if (datos.length <= 1) {
+      Logger.log('[Casos Archivo] No hay datos para archivar (solo encabezados)');
+      return true;
+    }
+
+    // Crear o obtener hoja de Archivo
+    let hojaArchivo = hojaActual.getSheetByName('Archivo_Casos');
+    if (!hojaArchivo) {
+      Logger.log('[Casos Archivo] Creando hoja Archivo_Casos...');
+      hojaArchivo = hojaActual.insertSheet('Archivo_Casos');
+      // Agregar encabezados
+      hojaArchivo.getRange(1, 1, 1, datos[0].length).setValues([datos[0]]);
+      Logger.log('[Casos Archivo] ✅ Hoja creada con encabezados');
+    }
+
+    // Obtener los datos a archivar (todo excepto encabezados)
+    const datosParaArchivar = datos.slice(1);
+
+    if (datosParaArchivar.length > 0) {
+      // Encontrar última fila en archivo
+      const ultimaFilaArchivo = encontrarUltimaFilaConDatos(hojaArchivo);
+
+      // Agregar datos al archivo
+      hojaArchivo.getRange(ultimaFilaArchivo + 1, 1, datosParaArchivar.length, datos[0].length)
+        .setValues(datosParaArchivar);
+
+      Logger.log(`[Casos Archivo] ✅ ${datosParaArchivar.length} filas archivadas en fila ${ultimaFilaArchivo + 1}`);
+
+      // LIMPIAR DatosKobo - dejar solo encabezados
+      if (datos.length > 1) {
+        hojaDatosKobo.getRange(2, 1, datos.length - 1, datos[0].length).clearContent();
+        Logger.log('[Casos Archivo] ✅ DatosKobo limpiado (solo encabezados)');
+      }
+    }
+
+    return true;
+
+  } catch (error) {
+    Logger.log(`[Casos Archivo] ❌ Error: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Crea el menú personalizado al abrir la hoja
  */
 function onOpen() {
@@ -81,6 +141,7 @@ function onOpen() {
     .addItem('🔄 Sincronizar Solo Nuevos (2026)', 'sincronizarConHojaPrincipal')
     .addItem('📤 Sincronización Inicial (Enviar Todo 2026)', 'sincronizacionInicial')
     .addSeparator()
+    .addItem('🗄️ Archivar y Limpiar Datos', 'archivarYLimpiar')
     .addItem('🧹 Limpiar Hoja (Solo Encabezados)', 'limpiarHojaIntervencionCasos')
     .addItem('🔄 Reseteo Completo (Todo Limpio)', 'reseteoCompleto')
     .addSeparator()
@@ -678,6 +739,13 @@ function sincronizarConHojaPrincipal() {
 
     ui.alert('✅ Sincronización exitosa', mensaje, ui.ButtonSet.OK);
 
+    // ARCHIVAR Y LIMPIAR automáticamente después de sincronizar
+    Logger.log('[Casos] Archivando y limpiando datos...');
+    const archivoExitoso = archivarYLimpiar();
+    if (archivoExitoso) {
+      Logger.log('[Casos] ✅ Datos archivados y DatosKobo limpiado');
+    }
+
   } catch (error) {
     ui.alert('❌ Error', 'Error al sincronizar: ' + error.message, ui.ButtonSet.OK);
     Logger.log('Error: ' + error.stack);
@@ -945,6 +1013,10 @@ function sincronizarAutomatico() {
       propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS', filasNuevas.length.toString());
 
       Logger.log(`Sincronización automática: ${filasNuevas.length} filas nuevas agregadas en fila ${ultimaFila + 1}`);
+
+      // ARCHIVAR Y LIMPIAR automáticamente después de sincronizar
+      Logger.log('[Casos Auto] Archivando y limpiando datos...');
+      archivarYLimpiar();
     } else {
       Logger.log('Sincronización automática: sin datos nuevos');
     }
