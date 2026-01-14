@@ -13,6 +13,40 @@ const SPREADSHEET_DESTINO_ID_PROG = "1T0YCTaiu6qxB6Hzq0nth3ZlJpCeKlGTrw2afncW11M
 const HOJA_DESTINO_NOMBRE_PROG = "Lista de Espera";
 
 /**
+ * Normaliza un teléfono para comparación
+ * Quita espacios, guiones, paréntesis, etc.
+ */
+function normalizarTelefonoProg(telefono) {
+  if (!telefono) return '';
+
+  return telefono.toString()
+    .trim()
+    .replace(/[\s\-\(\)\.]/g, '') // Quitar espacios, guiones, paréntesis, puntos
+    .replace(/^(\+593|593|0)/g, ''); // Normalizar prefijos Ecuador
+}
+
+/**
+ * Crea un ID único basado en múltiples campos
+ */
+function crearIDUnicoProg(fila, indices) {
+  const partes = [];
+
+  if (indices.telefono >= 0 && fila[indices.telefono]) {
+    partes.push(normalizarTelefonoProg(fila[indices.telefono]));
+  }
+
+  if (indices.nombres >= 0 && fila[indices.nombres]) {
+    partes.push(fila[indices.nombres].toString().trim().toLowerCase());
+  }
+
+  if (indices.apellidos >= 0 && fila[indices.apellidos]) {
+    partes.push(fila[indices.apellidos].toString().trim().toLowerCase());
+  }
+
+  return partes.join('|');
+}
+
+/**
  * Encuentra la última fila con datos REALES (no vacía)
  * Busca desde abajo hacia arriba la primera fila que tenga contenido
  */
@@ -480,59 +514,96 @@ function sincronizarConHojaPrincipalProg() {
     Logger.log(`[Programas] Columnas especiales: ${columnasEspeciales.length}`);
     Logger.log(`[Programas] Columnas ignoradas: ${columnasIgnoradas.length}`);
 
-    // Detectar filas nuevas (usar teléfono como identificador único)
-    const datosExistentes = new Set();
+    // Buscar índices de columnas clave
     const indiceTelefonoDestino = encabezadosDestino.findIndex(col =>
       col.toString().trim().toLowerCase() === 'teléfono'
     );
+    const indiceNombresDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombre completo' ||
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
 
-    for (let i = 1; i < datosDestino.length; i++) {
-      if (indiceTelefonoDestino >= 0) {
-        const telefono = datosDestino[i][indiceTelefonoDestino];
-        if (telefono) {
-          datosExistentes.add(telefono.toString().trim());
-        }
-      }
-    }
-
-    const filasNuevas = [];
     const indiceTelefonoOrigen = encabezadosOrigen.findIndex(col =>
       col.toString().trim().toLowerCase() === 'teléfono'
     );
+    const indiceNombresOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
+
+    // Construir Set de IDs existentes usando ID compuesto
+    const datosExistentes = new Set();
+    Logger.log(`[Programas] Construyendo set de datos existentes...`);
+
+    for (let i = 1; i < datosDestino.length; i++) {
+      const indicesDestino = {
+        telefono: indiceTelefonoDestino,
+        nombres: indiceNombresDestino,
+        apellidos: -1
+      };
+
+      const idUnico = crearIDUnicoProg(datosDestino[i], indicesDestino);
+      if (idUnico) {
+        datosExistentes.add(idUnico);
+      }
+    }
+
+    Logger.log(`[Programas] Total registros existentes: ${datosExistentes.size}`);
+
+    const filasNuevas = [];
+    let filasOmitidasPorDuplicado = 0;
+    let filasSinID = 0;
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
 
-      const telefono = indiceTelefonoOrigen >= 0 ? filaOrigen[indiceTelefonoOrigen] : '';
+      // Crear ID único para esta fila
+      const indicesOrigen = {
+        telefono: indiceTelefonoOrigen,
+        nombres: indiceNombresOrigen,
+        apellidos: indiceApellidosOrigen
+      };
 
-      // CORRECCIÓN: Solo procesar filas que tengan teléfono
-      // Si no tiene teléfono, saltarla para evitar duplicados
-      if (!telefono || telefono.toString().trim() === '') {
+      const idUnico = crearIDUnicoProg(filaOrigen, indicesOrigen);
+
+      // Si no se pudo crear un ID, omitir
+      if (!idUnico) {
+        filasSinID++;
+        Logger.log(`[Programas] Fila ${i + 1} omitida: sin datos suficientes`);
         continue;
       }
 
-      // Verificar si es duplicado (lógica corregida)
-      const esDuplicado = datosExistentes.has(telefono.toString().trim());
+      // Verificar si es duplicado
+      const esDuplicado = datosExistentes.has(idUnico);
 
-      if (!esDuplicado) {
-        const nuevaFila = new Array(encabezadosDestino.length).fill('');
-
-        mapeoColumnas.forEach(mapeo => {
-          nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
-        });
-
-        columnasEspeciales.forEach(especial => {
-          if (especial.tipo === 'combinar') {
-            const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
-            nuevaFila[especial.destino] = valores.join(' ').trim();
-          }
-        });
-
-        filasNuevas.push(nuevaFila);
-        // Agregar al set para evitar duplicados en la misma sincronización
-        datosExistentes.add(telefono.toString().trim());
+      if (esDuplicado) {
+        filasOmitidasPorDuplicado++;
+        Logger.log(`[Programas] Fila ${i + 1} omitida: duplicado (ID: ${idUnico})`);
+        continue;
       }
+
+      // Es nuevo, crear la fila
+      const nuevaFila = new Array(encabezadosDestino.length).fill('');
+
+      mapeoColumnas.forEach(mapeo => {
+        nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
+      });
+
+      columnasEspeciales.forEach(especial => {
+        if (especial.tipo === 'combinar') {
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
+          nuevaFila[especial.destino] = valores.join(' ').trim();
+        }
+      });
+
+      filasNuevas.push(nuevaFila);
+      datosExistentes.add(idUnico);
+      Logger.log(`[Programas] Fila ${i + 1} agregada (ID: ${idUnico})`);
     }
+
+    Logger.log(`[Programas] Resumen: ${filasNuevas.length} nuevas, ${filasOmitidasPorDuplicado} duplicadas, ${filasSinID} sin ID`);
 
     Logger.log(`[Programas] Filas nuevas detectadas: ${filasNuevas.length}`);
 
@@ -724,58 +795,96 @@ function sincronizarAutomaticoProg() {
     const { mapeoColumnas, columnasEspeciales } =
       mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDestino);
 
-    const datosExistentes = new Set();
+    // Encontrar índices de columnas clave en DESTINO
     const indiceTelefonoDestino = encabezadosDestino.findIndex(col =>
       col.toString().trim().toLowerCase() === 'teléfono'
     );
+    const indiceNombresDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
 
-    for (let i = 1; i < datosDestino.length; i++) {
-      if (indiceTelefonoDestino >= 0) {
-        const telefono = datosDestino[i][indiceTelefonoDestino];
-        if (telefono) {
-          datosExistentes.add(telefono.toString().trim());
-        }
-      }
-    }
-
-    const filasNuevas = [];
+    // Encontrar índices de columnas clave en ORIGEN
     const indiceTelefonoOrigen = encabezadosOrigen.findIndex(col =>
       col.toString().trim().toLowerCase() === 'teléfono'
     );
+    const indiceNombresOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosOrigen = encabezadosOrigen.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
+
+    // Construir Set de IDs existentes usando ID compuesto
+    const datosExistentes = new Set();
+    for (let i = 1; i < datosDestino.length; i++) {
+      const indicesDestino = {
+        telefono: indiceTelefonoDestino,
+        nombres: indiceNombresDestino,
+        apellidos: indiceApellidosDestino
+      };
+      const idUnico = crearIDUnicoProg(datosDestino[i], indicesDestino);
+      if (idUnico) {
+        datosExistentes.add(idUnico);
+      }
+    }
+
+    Logger.log(`[Programas Auto] IDs existentes en destino: ${datosExistentes.size}`);
+
+    const filasNuevas = [];
+    const indicesOrigen = {
+      telefono: indiceTelefonoOrigen,
+      nombres: indiceNombresOrigen,
+      apellidos: indiceApellidosOrigen
+    };
+
+    let filasNuevasCount = 0;
+    let filasOmitidasPorDuplicado = 0;
+    let filasSinID = 0;
 
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
 
-      const telefono = indiceTelefonoOrigen >= 0 ? filaOrigen[indiceTelefonoOrigen] : '';
+      // Crear ID único para esta fila
+      const idUnico = crearIDUnicoProg(filaOrigen, indicesOrigen);
 
-      // CORRECCIÓN: Solo procesar filas que tengan teléfono
-      // Si no tiene teléfono, saltarla para evitar duplicados
-      if (!telefono || telefono.toString().trim() === '') {
+      // Si no tiene suficiente información para crear un ID, omitir
+      if (!idUnico) {
+        filasSinID++;
+        Logger.log(`[Programas Auto] Fila ${i + 1} omitida: sin datos suficientes para identificación`);
         continue;
       }
 
-      // Verificar si es duplicado (lógica corregida)
-      const esDuplicado = datosExistentes.has(telefono.toString().trim());
-
-      if (!esDuplicado) {
-        const nuevaFila = new Array(encabezadosDestino.length).fill('');
-
-        mapeoColumnas.forEach(mapeo => {
-          nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
-        });
-
-        columnasEspeciales.forEach(especial => {
-          if (especial.tipo === 'combinar') {
-            const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
-            nuevaFila[especial.destino] = valores.join(' ').trim();
-          }
-        });
-
-        filasNuevas.push(nuevaFila);
-        // Agregar al set para evitar duplicados en la misma sincronización
-        datosExistentes.add(telefono.toString().trim());
+      // Verificar si es duplicado usando ID compuesto
+      if (datosExistentes.has(idUnico)) {
+        filasOmitidasPorDuplicado++;
+        Logger.log(`[Programas Auto] Fila ${i + 1} omitida: duplicado (ID: ${idUnico})`);
+        continue;
       }
+
+      // Es una fila nueva, mapear columnas
+      const nuevaFila = new Array(encabezadosDestino.length).fill('');
+
+      mapeoColumnas.forEach(mapeo => {
+        nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
+      });
+
+      columnasEspeciales.forEach(especial => {
+        if (especial.tipo === 'combinar') {
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
+          nuevaFila[especial.destino] = valores.join(' ').trim();
+        }
+      });
+
+      filasNuevas.push(nuevaFila);
+      datosExistentes.add(idUnico); // Agregar al set para evitar duplicados en la misma sincronización
+      filasNuevasCount++;
+      Logger.log(`[Programas Auto] Fila ${i + 1} agregada (ID: ${idUnico})`);
     }
+
+    Logger.log(`[Programas Auto] Resumen: ${filasNuevasCount} nuevas, ${filasOmitidasPorDuplicado} duplicadas, ${filasSinID} sin ID`)
 
     if (filasNuevas.length > 0) {
       const ultimaFila = encontrarUltimaFilaConDatosProg(hojaPrincipal);
