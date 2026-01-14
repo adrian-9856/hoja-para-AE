@@ -499,9 +499,17 @@ function sincronizarConHojaPrincipalDeriv() {
       const filaOrigen = datosOrigen[i];
 
       const telefono = indiceTelefonoOrigen >= 0 ? filaOrigen[indiceTelefonoOrigen] : '';
-      const esNueva = !telefono || !datosExistentes.has(telefono.toString().trim());
 
-      if (esNueva) {
+      // CORRECCIÓN: Solo procesar filas que tengan teléfono
+      // Si no tiene teléfono, saltarla para evitar duplicados
+      if (!telefono || telefono.toString().trim() === '') {
+        continue;
+      }
+
+      // Verificar si es duplicado (lógica corregida)
+      const esDuplicado = datosExistentes.has(telefono.toString().trim());
+
+      if (!esDuplicado) {
         const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
         mapeoColumnas.forEach(mapeo => {
@@ -516,6 +524,8 @@ function sincronizarConHojaPrincipalDeriv() {
         });
 
         filasNuevas.push(nuevaFila);
+        // Agregar al set para evitar duplicados en la misma sincronización
+        datosExistentes.add(telefono.toString().trim());
       }
     }
 
@@ -730,9 +740,17 @@ function sincronizarAutomaticoDeriv() {
       const filaOrigen = datosOrigen[i];
 
       const telefono = indiceTelefonoOrigen >= 0 ? filaOrigen[indiceTelefonoOrigen] : '';
-      const esNueva = !telefono || !datosExistentes.has(telefono.toString().trim());
 
-      if (esNueva) {
+      // CORRECCIÓN: Solo procesar filas que tengan teléfono
+      // Si no tiene teléfono, saltarla para evitar duplicados
+      if (!telefono || telefono.toString().trim() === '') {
+        continue;
+      }
+
+      // Verificar si es duplicado (lógica corregida)
+      const esDuplicado = datosExistentes.has(telefono.toString().trim());
+
+      if (!esDuplicado) {
         const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
         mapeoColumnas.forEach(mapeo => {
@@ -747,6 +765,8 @@ function sincronizarAutomaticoDeriv() {
         });
 
         filasNuevas.push(nuevaFila);
+        // Agregar al set para evitar duplicados en la misma sincronización
+        datosExistentes.add(telefono.toString().trim());
       }
     }
 
