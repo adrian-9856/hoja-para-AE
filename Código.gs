@@ -375,9 +375,15 @@ function mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino) 
   const indiceTipo = encabezadosOrigen.findIndex(col =>
     col.toString().trim().toLowerCase() === 'tipo intervención de caso'
   );
-  const indiceMotivo = encabezadosOrigen.findIndex(col =>
-    col.toString().trim().toLowerCase() === 'motivo intervención de caso'
-  );
+
+  // Buscar TODAS las columnas de motivo (hay 3 preguntas diferentes)
+  const indicesMotivos = [];
+  encabezadosOrigen.forEach((col, idx) => {
+    const colNombre = col.toString().trim().toLowerCase();
+    if (colNombre === 'motivo intervención de caso' || colNombre.startsWith('motivo intervención de caso')) {
+      indicesMotivos.push(idx);
+    }
+  });
 
   // Buscar índices en destino
   const indiceFechaDestino = encabezadosDestino.findIndex(col =>
@@ -405,7 +411,7 @@ function mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino) 
   Logger.log(`  apellidos (s): ${indiceApellidos}`);
   Logger.log(`  Creamos ID: ${indiceCreamosID}`);
   Logger.log(`  Tipo intervención de caso: ${indiceTipo}`);
-  Logger.log(`  Motivo intervención de caso: ${indiceMotivo}`);
+  Logger.log(`  Motivos intervención de caso (${indicesMotivos.length} columnas): [${indicesMotivos.join(', ')}]`);
 
   Logger.log('=== ÍNDICES ENCONTRADOS DESTINO ===');
   Logger.log(`  Fecha: ${indiceFechaDestino}`);
@@ -452,12 +458,13 @@ function mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino) 
     });
   }
 
-  // Mapear Motivo intervención de caso → Motivo
-  if (indiceMotivo >= 0 && indiceMotivoDestino >= 0) {
-    mapeoColumnas.push({
-      origen: indiceMotivo,
+  // Mapear TODAS las columnas de Motivo (3 preguntas) → una sola columna Motivo
+  if (indicesMotivos.length > 0 && indiceMotivoDestino >= 0) {
+    columnasEspeciales.push({
+      tipo: 'combinar',
+      origenes: indicesMotivos,
       destino: indiceMotivoDestino,
-      nombre: 'Motivo intervención de caso → Motivo'
+      nombre: `Motivos intervención de caso (×${indicesMotivos.length}) → Motivo (combinados con ;)`
     });
   }
 
@@ -552,11 +559,18 @@ function sincronizarConHojaPrincipal() {
         nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
       });
 
-      // Aplicar mapeos especiales (combinar nombre + apellidos)
+      // Aplicar mapeos especiales (combinar nombre + apellidos, y motivos)
       columnasEspeciales.forEach(especial => {
         if (especial.tipo === 'combinar') {
-          const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
-          nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
+
+          // Si es el mapeo de Participante (nombre + apellidos), usar espacio
+          if (especial.nombre.includes('Participante')) {
+            nuevaFila[especial.destino] = valores.join(' ').trim();
+          } else {
+            // Para motivos, usar punto y coma
+            nuevaFila[especial.destino] = valores.join('; ').trim();
+          }
         }
       });
 
@@ -688,8 +702,15 @@ function sincronizacionInicial() {
 
       columnasEspeciales.forEach(especial => {
         if (especial.tipo === 'combinar') {
-          const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
-          nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
+
+          // Si es el mapeo de Participante (nombre + apellidos), usar espacio
+          if (especial.nombre.includes('Participante')) {
+            nuevaFila[especial.destino] = valores.join(' ').trim();
+          } else {
+            // Para motivos, usar punto y coma
+            nuevaFila[especial.destino] = valores.join('; ').trim();
+          }
         }
       });
 
@@ -805,8 +826,15 @@ function sincronizarAutomatico() {
 
       columnasEspeciales.forEach(especial => {
         if (especial.tipo === 'combinar') {
-          const valores = especial.origenes.map(idx => filaOrigen[idx] || '');
-          nuevaFila[especial.destino] = valores.filter(v => v).join(' ').trim();
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
+
+          // Si es el mapeo de Participante (nombre + apellidos), usar espacio
+          if (especial.nombre.includes('Participante')) {
+            nuevaFila[especial.destino] = valores.join(' ').trim();
+          } else {
+            // Para motivos, usar punto y coma
+            nuevaFila[especial.destino] = valores.join('; ').trim();
+          }
         }
       });
 
