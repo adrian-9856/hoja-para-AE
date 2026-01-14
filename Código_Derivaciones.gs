@@ -44,6 +44,8 @@ function onOpenDerivaciones() {
     .addItem('🔄 Sincronizar Solo Nuevos', 'sincronizarConHojaPrincipalDeriv')
     .addItem('📤 Sincronización Inicial (Enviar Todo)', 'sincronizacionInicialDeriv')
     .addSeparator()
+    .addItem('🧹 Limpiar Hoja (Solo Encabezados)', 'limpiarHojaListaDeEspera')
+    .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Configurar')
       .addItem('Activar Sincronización Automática', 'activarSincronizacionAutomaticaDeriv')
       .addItem('Desactivar Sincronización Automática', 'desactivarSincronizacionAutomaticaDeriv')
@@ -887,6 +889,47 @@ function verEstadoSincronizacionDeriv() {
     }
 
     ui.alert('Estado de Sincronización', mensaje, ui.ButtonSet.OK);
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Limpia todas las filas vacías manteniendo solo encabezados
+ */
+function limpiarHojaListaDeEspera() {
+  const ui = SpreadsheetApp.getUi();
+
+  const confirmacion = ui.alert(
+    '⚠️ Limpiar Lista de Espera',
+    '¿Estás seguro que deseas ELIMINAR todas las filas vacías?\n\n' +
+    'Esto NO eliminará los encabezados.\n' +
+    'Solo eliminará filas sin contenido real.',
+    ui.ButtonSet.YES_NO
+  );
+
+  if (confirmacion !== ui.Button.YES) {
+    return;
+  }
+
+  try {
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID_DERIVACIONES);
+    const hoja = spreadsheetDestino.getSheetByName(HOJA_DESTINO_NOMBRE_DERIVACIONES);
+
+    if (!hoja) {
+      ui.alert('❌ Error', 'No se encontró la hoja "Lista de Espera"', ui.ButtonSet.OK);
+      return;
+    }
+
+    const ultimaFila = hoja.getMaxRows();
+
+    // Si hay más de 1 fila (encabezados), eliminar el resto
+    if (ultimaFila > 1) {
+      hoja.deleteRows(2, ultimaFila - 1);
+    }
+
+    ui.alert('✅ Limpieza exitosa', 'Se eliminaron todas las filas vacías.\nSolo quedan los encabezados.', ui.ButtonSet.OK);
 
   } catch (error) {
     ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
