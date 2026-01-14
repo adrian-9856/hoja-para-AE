@@ -386,10 +386,13 @@ function mapearColumnasDerivaciones(encabezadosOrigen, encabezadosDestino) {
   // Mapeo de columnas con nombres similares (case-insensitive y flexible)
   const mapeosFlexibles = {
     'servicio': 'servicio que solicita',
+    'terapia individual': 'servicio que solicita',
     'programa de creamos': 'programa de creamos / organización',
+    'nombre de organización': 'programa de creamos / organización',
     'nombre de quien deriva': 'nombre de quien deriva o refiere',
     'derivación o referencia': 'derivación o referencia',
     'motivo de derivación u referencia': 'motivo de derivación u referencia',
+    'motivo de derivación': 'malestar principal',
     'teléfono': 'teléfono',
     'dirección': 'dirección'
   };
