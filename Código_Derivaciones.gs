@@ -387,6 +387,7 @@ function mapearColumnasDerivaciones(encabezadosOrigen, encabezadosDestino) {
   const mapeosFlexibles = {
     'servicio': 'servicio que solicita',
     'terapia individual': 'servicio que solicita',
+    'servicio al que deriva': 'servicio que solicita',
     'programa de creamos': 'programa de creamos / organización',
     'nombre de organización': 'programa de creamos / organización',
     'nombre de quien deriva': 'nombre de quien deriva o refiere',
