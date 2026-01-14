@@ -82,6 +82,7 @@ function onOpen() {
     .addItem('📤 Sincronización Inicial (Enviar Todo 2026)', 'sincronizacionInicial')
     .addSeparator()
     .addItem('🧹 Limpiar Hoja (Solo Encabezados)', 'limpiarHojaIntervencionCasos')
+    .addItem('🔄 Reseteo Completo (Todo Limpio)', 'reseteoCompleto')
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Configurar')
       .addItem('Activar Sincronización Automática', 'activarSincronizacionAutomatica')
@@ -1122,5 +1123,85 @@ function limpiarHojaIntervencionCasos() {
 
   } catch (error) {
     ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Reseteo completo - Elimina DatosKobo y limpia Intervención de Casos
+ */
+function reseteoCompleto() {
+  const ui = SpreadsheetApp.getUi();
+
+  const confirmacion1 = ui.alert(
+    '⚠️⚠️⚠️ RESETEO COMPLETO ⚠️⚠️⚠️',
+    'Esta acción eliminará:\n\n' +
+    '1. La hoja "DatosKobo" completamente\n' +
+    '2. Todos los datos de "Intervención de casos"\n\n' +
+    '⚠️ ESTO BORRARÁ TODO Y NO SE PUEDE DESHACER ⚠️\n\n' +
+    '¿Estás SEGURO?',
+    ui.ButtonSet.YES_NO
+  );
+
+  if (confirmacion1 !== ui.Button.YES) {
+    return;
+  }
+
+  const confirmacion2 = ui.alert(
+    '⚠️ ÚLTIMA CONFIRMACIÓN',
+    'Escribe "SÍ" en la siguiente ventana para confirmar que deseas borrar TODO.',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (confirmacion2 !== ui.Button.OK) {
+    return;
+  }
+
+  const respuesta = ui.prompt(
+    '⚠️ Confirmación Final',
+    'Escribe exactamente: SI\n\n' +
+    '(en mayúsculas, sin acentos)',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (respuesta.getSelectedButton() !== ui.Button.OK || respuesta.getResponseText().trim() !== 'SI') {
+    ui.alert('❌ Cancelado', 'Reseteo cancelado. No se eliminó nada.', ui.ButtonSet.OK);
+    return;
+  }
+
+  try {
+    const spreadsheetLocal = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 1. Eliminar hoja DatosKobo
+    const hojaDatosKobo = spreadsheetLocal.getSheetByName("DatosKobo");
+    if (hojaDatosKobo) {
+      spreadsheetLocal.deleteSheet(hojaDatosKobo);
+      Logger.log('Hoja DatosKobo eliminada');
+    }
+
+    // 2. Limpiar hoja de Intervención de casos
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID);
+    const hojaDestino = spreadsheetDestino.getSheetByName(HOJA_DESTINO_NOMBRE);
+
+    if (hojaDestino) {
+      const ultimaFila = hojaDestino.getMaxRows();
+      if (ultimaFila > 1) {
+        hojaDestino.deleteRows(2, ultimaFila - 1);
+      }
+      Logger.log('Hoja Intervención de casos limpiada');
+    }
+
+    ui.alert(
+      '✅ Reseteo Completo Exitoso',
+      '✓ Hoja "DatosKobo" eliminada\n' +
+      '✓ Hoja "Intervención de casos" limpiada\n\n' +
+      'Ahora puedes:\n' +
+      '1. Importar Datos - Para traer nuevos datos de KoboToolbox\n' +
+      '2. Sincronización Inicial - Para enviar todo a Intervención de casos',
+      ui.ButtonSet.OK
+    );
+
+  } catch (error) {
+    ui.alert('❌ Error', 'Error durante el reseteo: ' + error.message, ui.ButtonSet.OK);
+    Logger.log('Error en reseteoCompleto: ' + error.stack);
   }
 }
