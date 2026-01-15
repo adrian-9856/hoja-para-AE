@@ -247,6 +247,100 @@ function normalizarDatosProg(datos) {
 }
 
 /**
+ * Filtra datos importados eliminando los que ya están en el Archivo
+ * Esto previene que datos ya procesados vuelvan a DatosKoboProg
+ */
+function filtrarDatosYaArchivadosProg(datosImportados) {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const hojaArchivo = spreadsheet.getSheetByName('Archivo_Programas');
+
+    // Si no existe el archivo, retornar todos los datos (primera vez)
+    if (!hojaArchivo) {
+      Logger.log('[Programas Filtro] No existe Archivo_Programas, retornando todos los datos');
+      return datosImportados;
+    }
+
+    const datosArchivo = hojaArchivo.getDataRange().getValues();
+
+    // Si el archivo solo tiene encabezados, retornar todos
+    if (datosArchivo.length <= 1) {
+      Logger.log('[Programas Filtro] Archivo vacío, retornando todos los datos');
+      return datosImportados;
+    }
+
+    const encabezadosImportados = datosImportados[0];
+    const encabezadosArchivo = datosArchivo[0];
+
+    // Encontrar índices de columnas clave
+    const indiceTelefonoImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'teléfono'
+    );
+    const indiceNombresImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
+
+    const indiceTelefonoArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'teléfono'
+    );
+    const indiceNombresArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
+
+    // Construir Set de IDs del archivo
+    const idsArchivados = new Set();
+    for (let i = 1; i < datosArchivo.length; i++) {
+      const indicesArch = {
+        telefono: indiceTelefonoArch,
+        nombres: indiceNombresArch,
+        apellidos: indiceApellidosArch
+      };
+      const idUnico = crearIDUnicoProg(datosArchivo[i], indicesArch);
+      if (idUnico) {
+        idsArchivados.add(idUnico);
+      }
+    }
+
+    Logger.log(`[Programas Filtro] IDs en archivo: ${idsArchivados.size}`);
+
+    // Filtrar datos importados
+    const datosFiltrados = [encabezadosImportados];
+    let eliminados = 0;
+    let conservados = 0;
+
+    for (let i = 1; i < datosImportados.length; i++) {
+      const indicesImp = {
+        telefono: indiceTelefonoImp,
+        nombres: indiceNombresImp,
+        apellidos: indiceApellidosImp
+      };
+      const idUnico = crearIDUnicoProg(datosImportados[i], indicesImp);
+
+      if (!idUnico || !idsArchivados.has(idUnico)) {
+        datosFiltrados.push(datosImportados[i]);
+        conservados++;
+      } else {
+        eliminados++;
+      }
+    }
+
+    Logger.log(`[Programas Filtro] Eliminados: ${eliminados}, Conservados: ${conservados}`);
+
+    return datosFiltrados;
+
+  } catch (error) {
+    Logger.log(`[Programas Filtro] Error: ${error.message}`);
+    return datosImportados;
+  }
+}
+
+/**
  * Importa datos CSV desde KoboToolbox a la hoja "DatosKoboProg"
  */
 function importarCSVdesdeKoboProg() {
@@ -297,6 +391,10 @@ function importarCSVdesdeKoboProg() {
     datos = normalizarDatosProg(datos);
 
     Logger.log(`[Programas] Datos parseados: ${datos.length} filas, ${datos[0].length} columnas`);
+
+    // FILTRAR DATOS: Eliminar los que ya están en el Archivo
+    datos = filtrarDatosYaArchivadosProg(datos);
+    Logger.log(`[Programas] Después del filtro: ${datos.length} filas`);
 
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     let hoja = spreadsheet.getSheetByName("DatosKoboProg");
@@ -391,6 +489,10 @@ function actualizarDatosAutomaticoProg() {
     }
 
     datos = normalizarDatosProg(datos);
+
+    // FILTRAR DATOS: Eliminar los que ya están en el Archivo
+    datos = filtrarDatosYaArchivadosProg(datos);
+    Logger.log(`[Programas Auto] Después del filtro: ${datos.length} filas`);
 
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     let hoja = spreadsheet.getSheetByName("DatosKoboProg");

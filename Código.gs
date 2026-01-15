@@ -251,6 +251,93 @@ function normalizarDatos(datos) {
 }
 
 /**
+ * Filtra datos importados eliminando los que ya están en el Archivo
+ * Esto previene que datos ya procesados vuelvan a DatosKobo
+ */
+function filtrarDatosYaArchivados(datosImportados) {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const hojaArchivo = spreadsheet.getSheetByName('Archivo_Casos');
+
+    // Si no existe el archivo, retornar todos los datos (primera vez)
+    if (!hojaArchivo) {
+      Logger.log('[Casos Filtro] No existe Archivo_Casos, retornando todos los datos');
+      return datosImportados;
+    }
+
+    const datosArchivo = hojaArchivo.getDataRange().getValues();
+
+    // Si el archivo solo tiene encabezados, retornar todos
+    if (datosArchivo.length <= 1) {
+      Logger.log('[Casos Filtro] Archivo vacío, retornando todos los datos');
+      return datosImportados;
+    }
+
+    const encabezadosImportados = datosImportados[0];
+    const encabezadosArchivo = datosArchivo[0];
+
+    // Encontrar índices de columnas clave en IMPORTADOS
+    const indiceNombresImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombre (s)'
+    );
+    const indiceApellidosImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos (s)'
+    );
+
+    // Encontrar índices de columnas clave en ARCHIVO
+    const indiceNombresArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombre (s)'
+    );
+    const indiceApellidosArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos (s)'
+    );
+
+    // Construir Set de participantes del archivo
+    const participantesArchivados = new Set();
+    for (let i = 1; i < datosArchivo.length; i++) {
+      const nombre = indiceNombresArch >= 0 ? datosArchivo[i][indiceNombresArch] : '';
+      const apellido = indiceApellidosArch >= 0 ? datosArchivo[i][indiceApellidosArch] : '';
+      const participante = `${nombre} ${apellido}`.trim().toLowerCase();
+
+      if (participante) {
+        participantesArchivados.add(participante);
+      }
+    }
+
+    Logger.log(`[Casos Filtro] Participantes en archivo: ${participantesArchivados.size}`);
+
+    // Filtrar datos importados - solo los que NO están en el archivo
+    const datosFiltrados = [encabezadosImportados]; // Mantener encabezados
+    let eliminados = 0;
+    let conservados = 0;
+
+    for (let i = 1; i < datosImportados.length; i++) {
+      const nombre = indiceNombresImp >= 0 ? datosImportados[i][indiceNombresImp] : '';
+      const apellido = indiceApellidosImp >= 0 ? datosImportados[i][indiceApellidosImp] : '';
+      const participante = `${nombre} ${apellido}`.trim().toLowerCase();
+
+      if (!participante || !participantesArchivados.has(participante)) {
+        // Es nuevo o no tiene nombre suficiente - conservar
+        datosFiltrados.push(datosImportados[i]);
+        conservados++;
+      } else {
+        // Ya está archivado - eliminar
+        eliminados++;
+      }
+    }
+
+    Logger.log(`[Casos Filtro] Eliminados: ${eliminados}, Conservados: ${conservados}`);
+
+    return datosFiltrados;
+
+  } catch (error) {
+    Logger.log(`[Casos Filtro] Error: ${error.message}`);
+    // En caso de error, retornar todos los datos
+    return datosImportados;
+  }
+}
+
+/**
  * Importa datos CSV desde KoboToolbox a la hoja "DatosKobo"
  */
 function importarCSVdesdeKobo() {
@@ -301,6 +388,10 @@ function importarCSVdesdeKobo() {
     datos = normalizarDatos(datos);
 
     Logger.log(`Datos parseados: ${datos.length} filas, ${datos[0].length} columnas`);
+
+    // FILTRAR DATOS: Eliminar los que ya están en el Archivo
+    datos = filtrarDatosYaArchivados(datos);
+    Logger.log(`[Casos] Después del filtro: ${datos.length} filas`);
 
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     let hoja = spreadsheet.getSheetByName("DatosKobo");
@@ -395,6 +486,10 @@ function actualizarDatosAutomatico() {
     }
 
     datos = normalizarDatos(datos);
+
+    // FILTRAR DATOS: Eliminar los que ya están en el Archivo
+    datos = filtrarDatosYaArchivados(datos);
+    Logger.log(`[Casos Auto] Después del filtro: ${datos.length} filas`);
 
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     let hoja = spreadsheet.getSheetByName("DatosKobo");

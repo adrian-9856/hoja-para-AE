@@ -248,6 +248,104 @@ function normalizarDatosDeriv(datos) {
 }
 
 /**
+ * Filtra datos importados eliminando los que ya están en el Archivo
+ * Esto previene que datos ya procesados vuelvan a DatosKobo
+ */
+function filtrarDatosYaArchivadosDeriv(datosImportados) {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const hojaArchivo = spreadsheet.getSheetByName('Archivo_Derivaciones');
+
+    // Si no existe el archivo, retornar todos los datos (primera vez)
+    if (!hojaArchivo) {
+      Logger.log('[Derivaciones Filtro] No existe Archivo_Derivaciones, retornando todos los datos');
+      return datosImportados;
+    }
+
+    const datosArchivo = hojaArchivo.getDataRange().getValues();
+
+    // Si el archivo solo tiene encabezados, retornar todos
+    if (datosArchivo.length <= 1) {
+      Logger.log('[Derivaciones Filtro] Archivo vacío, retornando todos los datos');
+      return datosImportados;
+    }
+
+    const encabezadosImportados = datosImportados[0];
+    const encabezadosArchivo = datosArchivo[0];
+
+    // Encontrar índices de columnas clave en IMPORTADOS
+    const indiceTelefonoImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'teléfono'
+    );
+    const indiceNombresImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
+
+    // Encontrar índices de columnas clave en ARCHIVO
+    const indiceTelefonoArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'teléfono'
+    );
+    const indiceNombresArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
+
+    // Construir Set de IDs del archivo
+    const idsArchivados = new Set();
+    for (let i = 1; i < datosArchivo.length; i++) {
+      const indicesArch = {
+        telefono: indiceTelefonoArch,
+        nombres: indiceNombresArch,
+        apellidos: indiceApellidosArch
+      };
+      const idUnico = crearIDUnico(datosArchivo[i], indicesArch);
+      if (idUnico) {
+        idsArchivados.add(idUnico);
+      }
+    }
+
+    Logger.log(`[Derivaciones Filtro] IDs en archivo: ${idsArchivados.size}`);
+
+    // Filtrar datos importados - solo los que NO están en el archivo
+    const datosFiltrados = [encabezadosImportados]; // Mantener encabezados
+    let eliminados = 0;
+    let conservados = 0;
+
+    for (let i = 1; i < datosImportados.length; i++) {
+      const indicesImp = {
+        telefono: indiceTelefonoImp,
+        nombres: indiceNombresImp,
+        apellidos: indiceApellidosImp
+      };
+      const idUnico = crearIDUnico(datosImportados[i], indicesImp);
+
+      if (!idUnico || !idsArchivados.has(idUnico)) {
+        // Es nuevo o no tiene ID suficiente - conservar
+        datosFiltrados.push(datosImportados[i]);
+        conservados++;
+      } else {
+        // Ya está archivado - eliminar
+        eliminados++;
+      }
+    }
+
+    Logger.log(`[Derivaciones Filtro] Eliminados: ${eliminados}, Conservados: ${conservados}`);
+
+    return datosFiltrados;
+
+  } catch (error) {
+    Logger.log(`[Derivaciones Filtro] Error: ${error.message}`);
+    // En caso de error, retornar todos los datos
+    return datosImportados;
+  }
+}
+
+/**
  * Importa datos CSV desde KoboToolbox a la hoja "DatosKoboDeriv"
  */
 function importarCSVdesdeKoboDeriv() {
@@ -298,6 +396,10 @@ function importarCSVdesdeKoboDeriv() {
     datos = normalizarDatosDeriv(datos);
 
     Logger.log(`[Derivaciones] Datos parseados: ${datos.length} filas, ${datos[0].length} columnas`);
+
+    // FILTRAR DATOS: Eliminar los que ya están en el Archivo
+    datos = filtrarDatosYaArchivadosDeriv(datos);
+    Logger.log(`[Derivaciones] Después del filtro: ${datos.length} filas`);
 
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     let hoja = spreadsheet.getSheetByName("DatosKoboDeriv");
@@ -392,6 +494,10 @@ function actualizarDatosAutomaticoDeriv() {
     }
 
     datos = normalizarDatosDeriv(datos);
+
+    // FILTRAR DATOS: Eliminar los que ya están en el Archivo
+    datos = filtrarDatosYaArchivadosDeriv(datos);
+    Logger.log(`[Derivaciones Auto] Después del filtro: ${datos.length} filas`);
 
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     let hoja = spreadsheet.getSheetByName("DatosKoboDeriv");
