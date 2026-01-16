@@ -39,20 +39,26 @@ Al sincronizar, verifica con DOS métodos:
 ## 📋 ARCHIVOS ACTUALIZADOS
 
 ### ✅ Código_Derivaciones.gs (Lista de Espera)
-- **COMPLETO:** Doble verificación implementada
+- **COMPLETO ✅:** Doble verificación implementada
+- Método 1: ID compuesto (teléfono + nombres + apellidos)
+- Método 2: Solo teléfono normalizado
 - Sincronización manual: `sincronizarConHojaPrincipalDeriv()`
 - Sincronización automática: `sincronizarAutomaticoDeriv()`
 
-### ⏳ Código_DerivacionesProgramas.gs (Programas)
-- **PENDIENTE:** Aplicar mismo patrón de doble verificación
-- Archivo y filtro: ✅ Implementados
-- Doble verificación: ⏳ Pendiente
+### ✅ Código_DerivacionesProgramas.gs (Programas)
+- **COMPLETO ✅:** Doble verificación implementada
+- Método 1: ID compuesto (teléfono + nombres + apellidos)
+- Método 2: Solo teléfono normalizado
+- Sincronización manual: `sincronizarConHojaPrincipalProg()`
+- Sincronización automática: `sincronizarAutomaticoProg()`
 
-### ⏳ Código.gs (Intervención de Casos)
-- **PENDIENTE:** Aplicar mismo patrón de doble verificación
-- Archivo y filtro: ✅ Implementados
-- Doble verificación: ⏳ Pendiente
-- Nota: Usa "Participante" (nombre+apellidos) en lugar de teléfono
+### ✅ Código.gs (Intervención de Casos)
+- **COMPLETO ✅:** Doble verificación implementada
+- Método 1: Participante completo (nombres + apellidos)
+- Método 2: Solo nombres (con advertencias en logs)
+- Nota: Usa "Participante" en lugar de teléfono
+- Sincronización manual: `sincronizarConHojaPrincipal()`
+- Sincronización automática: `sincronizarAutomatico()`
 
 ---
 
@@ -60,16 +66,19 @@ Al sincronizar, verifica con DOS métodos:
 
 ### **PASO 1: Copiar Código Actualizado**
 
-Copia estos archivos a Google Apps Script:
+Copia estos 3 archivos a Google Apps Script:
 
-1. **Código_Derivaciones.gs** ← ✅ LISTO (con doble verificación)
+1. **Código_Derivaciones.gs** ← ✅ COMPLETO (con doble verificación)
    - Ubicación: `/home/user/hoja-para-AE/Código_Derivaciones.gs`
+   - Sistema: Derivaciones → Lista de Espera
 
-2. **Código_DerivacionesProgramas.gs**
+2. **Código_DerivacionesProgramas.gs** ← ✅ COMPLETO (con doble verificación)
    - Ubicación: `/home/user/hoja-para-AE/Código_DerivacionesProgramas.gs`
+   - Sistema: Derivaciones de Programas → Lista de Espera
 
-3. **Código.gs**
+3. **Código.gs** ← ✅ COMPLETO (con doble verificación)
    - Ubicación: `/home/user/hoja-para-AE/Código.gs`
+   - Sistema: Intervención de Casos
 
 ### **PASO 2: Probar**
 
@@ -130,24 +139,29 @@ Envía solo los que realmente son nuevos ✅
 
 ## ⚠️ IMPORTANTE
 
-**Para que funcione completamente:**
+**TODOS LOS SISTEMAS ESTÁN LISTOS:**
 
-1. ✅ **Código_Derivaciones.gs** ya tiene doble verificación
-2. ⏳ **Los otros 2 sistemas** necesitan la misma actualización
-3. 🔄 **Copiar** todos los archivos a Google Apps Script
+1. ✅ **Código_Derivaciones.gs** - Doble verificación COMPLETA
+2. ✅ **Código_DerivacionesProgramas.gs** - Doble verificación COMPLETA
+3. ✅ **Código.gs** - Doble verificación COMPLETA
 
-**Si solo copias Código_Derivaciones.gs:**
-- ✅ Derivaciones (Lista de Espera) NO tendrá duplicados
-- ⏳ Los otros 2 sistemas aún pueden tener duplicados
+**DEBES COPIAR LOS 3 ARCHIVOS a Google Apps Script:**
+- Si copias solo 1 o 2, los otros seguirán teniendo problemas de duplicados
+- **COPIA LOS 3** para solución completa
+
+**Ubicación de los archivos:**
+- `/home/user/hoja-para-AE/Código_Derivaciones.gs`
+- `/home/user/hoja-para-AE/Código_DerivacionesProgramas.gs`
+- `/home/user/hoja-para-AE/Código.gs`
 
 ---
 
 ## 💡 PRÓXIMOS PASOS
 
-1. **Copiar Código_Derivaciones.gs** a Google Apps Script
-2. **Probar** que funcione en Derivaciones
-3. **Confirmar** que NO envía duplicados
-4. Si funciona → **Aplicar** mismo patrón a los otros 2 sistemas
+1. **Copiar los 3 archivos** a Google Apps Script
+2. **Probar** cada sistema individualmente
+3. **Verificar logs** para confirmar que detecta duplicados
+4. **Confirmar** que NO envía duplicados en hojas de destino
 
 ---
 
