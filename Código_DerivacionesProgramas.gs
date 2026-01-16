@@ -696,11 +696,13 @@ function sincronizarConHojaPrincipalProg() {
       col.toString().trim().toLowerCase() === 'apellidos'
     );
 
-    // Construir Set de IDs existentes usando ID compuesto
-    const datosExistentes = new Set();
+    // Construir Sets de IDs existentes - DOBLE VERIFICACIÓN
+    const datosExistentes = new Set(); // ID compuesto
+    const telefonosExistentes = new Set(); // Solo teléfonos (respaldo)
     Logger.log(`[Programas] Construyendo set de datos existentes...`);
 
     for (let i = 1; i < datosDestino.length; i++) {
+      // ID compuesto
       const indicesDestino = {
         telefono: indiceTelefonoDestino,
         nombres: indiceNombresDestino,
@@ -711,9 +713,20 @@ function sincronizarConHojaPrincipalProg() {
       if (idUnico) {
         datosExistentes.add(idUnico);
       }
+
+      // RESPALDO: También guardar solo teléfono normalizado
+      if (indiceTelefonoDestino >= 0) {
+        const telefono = datosDestino[i][indiceTelefonoDestino];
+        if (telefono) {
+          const telNormalizado = normalizarTelefonoProg(telefono);
+          if (telNormalizado) {
+            telefonosExistentes.add(telNormalizado);
+          }
+        }
+      }
     }
 
-    Logger.log(`[Programas] Total registros existentes: ${datosExistentes.size}`);
+    Logger.log(`[Programas] IDs existentes: ${datosExistentes.size}, Teléfonos únicos: ${telefonosExistentes.size}`);
 
     const filasNuevas = [];
     let filasOmitidasPorDuplicado = 0;
@@ -731,19 +744,37 @@ function sincronizarConHojaPrincipalProg() {
 
       const idUnico = crearIDUnicoProg(filaOrigen, indicesOrigen);
 
-      // Si no se pudo crear un ID, omitir
-      if (!idUnico) {
-        filasSinID++;
-        Logger.log(`[Programas] Fila ${i + 1} omitida: sin datos suficientes`);
+      // DOBLE VERIFICACIÓN de duplicados
+      let esDuplicado = false;
+
+      // Verificación 1: ID compuesto
+      if (idUnico && datosExistentes.has(idUnico)) {
+        esDuplicado = true;
+        Logger.log(`[Programas] Fila ${i + 1} omitida: duplicado por ID compuesto (${idUnico})`);
+      }
+
+      // Verificación 2: Solo teléfono normalizado (si tiene teléfono)
+      if (!esDuplicado && indiceTelefonoOrigen >= 0) {
+        const telefono = filaOrigen[indiceTelefonoOrigen];
+        if (telefono) {
+          const telNormalizado = normalizarTelefonoProg(telefono);
+          if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
+            esDuplicado = true;
+            Logger.log(`[Programas] Fila ${i + 1} omitida: duplicado por teléfono (${telNormalizado})`);
+          }
+        }
+      }
+
+      // Si es duplicado por cualquier método, omitir
+      if (esDuplicado) {
+        filasOmitidasPorDuplicado++;
         continue;
       }
 
-      // Verificar si es duplicado
-      const esDuplicado = datosExistentes.has(idUnico);
-
-      if (esDuplicado) {
-        filasOmitidasPorDuplicado++;
-        Logger.log(`[Programas] Fila ${i + 1} omitida: duplicado (ID: ${idUnico})`);
+      // Si no tiene datos suficientes para identificar, omitir por seguridad
+      if (!idUnico) {
+        filasSinID++;
+        Logger.log(`[Programas] Fila ${i + 1} omitida: sin datos suficientes para identificar`);
         continue;
       }
 
@@ -987,9 +1018,12 @@ function sincronizarAutomaticoProg() {
       col.toString().trim().toLowerCase() === 'apellidos'
     );
 
-    // Construir Set de IDs existentes usando ID compuesto
+    // Construir Sets de IDs existentes - DOBLE VERIFICACIÓN
     const datosExistentes = new Set();
+    const telefonosExistentes = new Set();
+
     for (let i = 1; i < datosDestino.length; i++) {
+      // ID compuesto
       const indicesDestino = {
         telefono: indiceTelefonoDestino,
         nombres: indiceNombresDestino,
@@ -999,9 +1033,20 @@ function sincronizarAutomaticoProg() {
       if (idUnico) {
         datosExistentes.add(idUnico);
       }
+
+      // RESPALDO: Solo teléfono
+      if (indiceTelefonoDestino >= 0) {
+        const telefono = datosDestino[i][indiceTelefonoDestino];
+        if (telefono) {
+          const telNormalizado = normalizarTelefonoProg(telefono);
+          if (telNormalizado) {
+            telefonosExistentes.add(telNormalizado);
+          }
+        }
+      }
     }
 
-    Logger.log(`[Programas Auto] IDs existentes en destino: ${datosExistentes.size}`);
+    Logger.log(`[Programas Auto] IDs: ${datosExistentes.size}, Teléfonos: ${telefonosExistentes.size}`);
 
     const filasNuevas = [];
     const indicesOrigen = {
@@ -1020,17 +1065,34 @@ function sincronizarAutomaticoProg() {
       // Crear ID único para esta fila
       const idUnico = crearIDUnicoProg(filaOrigen, indicesOrigen);
 
-      // Si no tiene suficiente información para crear un ID, omitir
-      if (!idUnico) {
-        filasSinID++;
-        Logger.log(`[Programas Auto] Fila ${i + 1} omitida: sin datos suficientes para identificación`);
+      // DOBLE VERIFICACIÓN de duplicados
+      let esDuplicado = false;
+
+      // Verificación 1: ID compuesto
+      if (idUnico && datosExistentes.has(idUnico)) {
+        esDuplicado = true;
+      }
+
+      // Verificación 2: Solo teléfono
+      if (!esDuplicado && indiceTelefonoOrigen >= 0) {
+        const telefono = filaOrigen[indiceTelefonoOrigen];
+        if (telefono) {
+          const telNormalizado = normalizarTelefonoProg(telefono);
+          if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
+            esDuplicado = true;
+          }
+        }
+      }
+
+      // Omitir duplicados
+      if (esDuplicado) {
+        filasOmitidasPorDuplicado++;
         continue;
       }
 
-      // Verificar si es duplicado usando ID compuesto
-      if (datosExistentes.has(idUnico)) {
-        filasOmitidasPorDuplicado++;
-        Logger.log(`[Programas Auto] Fila ${i + 1} omitida: duplicado (ID: ${idUnico})`);
+      // Omitir si no tiene ID
+      if (!idUnico) {
+        filasSinID++;
         continue;
       }
 

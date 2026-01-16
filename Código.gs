@@ -725,8 +725,10 @@ function sincronizarConHojaPrincipal() {
       Logger.log(`  ✓ [ESPECIAL] ${e.nombre}`);
     });
 
-    // Detectar filas nuevas usando Participante como identificador único
-    const datosExistentes = new Set();
+    // Detectar filas nuevas usando Participante - DOBLE VERIFICACIÓN
+    const participantesExistentes = new Set(); // Nombre completo
+    const nombresExistentes = new Set(); // Solo nombres (respaldo)
+
     const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
       col.toString().trim().toLowerCase() === 'participante'
     );
@@ -735,12 +737,19 @@ function sincronizarConHojaPrincipal() {
       if (indiceParticipanteDestino >= 0) {
         const participante = datosDestino[i][indiceParticipanteDestino];
         if (participante) {
-          datosExistentes.add(participante.toString().trim().toLowerCase());
+          const participanteNorm = participante.toString().trim().toLowerCase();
+          participantesExistentes.add(participanteNorm);
+
+          // RESPALDO: Guardar también solo el primer nombre
+          const partes = participanteNorm.split(/\s+/);
+          if (partes.length > 0 && partes[0]) {
+            nombresExistentes.add(partes[0]);
+          }
         }
       }
     }
 
-    Logger.log(`\nDatos existentes: ${datosExistentes.size} participantes`);
+    Logger.log(`\nDatos existentes: ${participantesExistentes.size} participantes, ${nombresExistentes.size} nombres únicos`);
 
     // Encontrar índice de la columna de fecha en origen (start)
     const indiceFechaOrigen = encabezadosOrigen.findIndex(col =>
@@ -785,15 +794,46 @@ function sincronizarConHojaPrincipal() {
         }
       });
 
-      // Verificar si es duplicado
+      // DOBLE VERIFICACIÓN de duplicados
       const participante = nuevaFila[indiceParticipanteDestino];
-      const esDuplicado = participante && datosExistentes.has(participante.toString().trim().toLowerCase());
+      let esDuplicado = false;
+
+      if (participante) {
+        const participanteNorm = participante.toString().trim().toLowerCase();
+
+        // Verificación 1: Participante completo
+        if (participantesExistentes.has(participanteNorm)) {
+          esDuplicado = true;
+          Logger.log(`[Casos] Fila ${i + 1} omitida: duplicado por participante (${participanteNorm})`);
+        }
+
+        // Verificación 2: Solo nombre (respaldo - más estricto)
+        if (!esDuplicado) {
+          const partes = participanteNorm.split(/\s+/);
+          const primerNombre = partes[0];
+          const ultimoApellido = partes[partes.length - 1];
+
+          // Solo si tiene nombre Y apellido, verificar ambos
+          if (partes.length >= 2 && nombresExistentes.has(primerNombre)) {
+            // Si el nombre ya existe, es probable duplicado
+            Logger.log(`[Casos] Advertencia fila ${i + 1}: nombre "${primerNombre}" ya existe`);
+            // Nota: No marcamos como duplicado solo por nombre para evitar falsos positivos
+            // Solo alertamos en logs
+          }
+        }
+      }
 
       if (!esDuplicado) {
         filasNuevas.push(nuevaFila);
         // Agregar al set para evitar duplicados en la misma sincronización
         if (participante) {
-          datosExistentes.add(participante.toString().trim().toLowerCase());
+          const participanteNorm = participante.toString().trim().toLowerCase();
+          participantesExistentes.add(participanteNorm);
+
+          const partes = participanteNorm.split(/\s+/);
+          if (partes.length > 0 && partes[0]) {
+            nombresExistentes.add(partes[0]);
+          }
         }
       }
     }
@@ -1036,7 +1076,10 @@ function sincronizarAutomatico() {
     const { mapeoColumnas, columnasEspeciales } =
       mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino);
 
-    const datosExistentes = new Set();
+    // DOBLE VERIFICACIÓN - Sets de datos existentes
+    const participantesExistentes = new Set();
+    const nombresExistentes = new Set();
+
     const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
       col.toString().trim().toLowerCase() === 'participante'
     );
@@ -1045,10 +1088,18 @@ function sincronizarAutomatico() {
       if (indiceParticipanteDestino >= 0) {
         const participante = datosDestino[i][indiceParticipanteDestino];
         if (participante) {
-          datosExistentes.add(participante.toString().trim().toLowerCase());
+          const participanteNorm = participante.toString().trim().toLowerCase();
+          participantesExistentes.add(participanteNorm);
+
+          const partes = participanteNorm.split(/\s+/);
+          if (partes.length > 0 && partes[0]) {
+            nombresExistentes.add(partes[0]);
+          }
         }
       }
     }
+
+    Logger.log(`[Casos Auto] Participantes: ${participantesExistentes.size}, Nombres: ${nombresExistentes.size}`);
 
     // Encontrar índice de la columna de fecha en origen (start)
     const indiceFechaOrigen = encabezadosOrigen.findIndex(col =>
@@ -1088,13 +1139,29 @@ function sincronizarAutomatico() {
         }
       });
 
+      // DOBLE VERIFICACIÓN de duplicados
       const participante = nuevaFila[indiceParticipanteDestino];
-      const esDuplicado = participante && datosExistentes.has(participante.toString().trim().toLowerCase());
+      let esDuplicado = false;
+
+      if (participante) {
+        const participanteNorm = participante.toString().trim().toLowerCase();
+
+        // Verificación: Participante completo
+        if (participantesExistentes.has(participanteNorm)) {
+          esDuplicado = true;
+        }
+      }
 
       if (!esDuplicado) {
         filasNuevas.push(nuevaFila);
         if (participante) {
-          datosExistentes.add(participante.toString().trim().toLowerCase());
+          const participanteNorm = participante.toString().trim().toLowerCase();
+          participantesExistentes.add(participanteNorm);
+
+          const partes = participanteNorm.split(/\s+/);
+          if (partes.length > 0 && partes[0]) {
+            nombresExistentes.add(partes[0]);
+          }
         }
       }
     }
