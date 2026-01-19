@@ -1327,3 +1327,116 @@ function limpiarHojaListaDeEsperaProg() {
     ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
   }
 }
+
+/**
+ * DIAGNÓSTICO: Muestra todas las columnas de KoboToolbox y Lista de Espera
+ */
+function diagnosticarColumnasProgramas() {
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheetLocal = SpreadsheetApp.getActiveSpreadsheet();
+
+  try {
+    // Leer hoja local (KoboToolbox)
+    const hojaOrigen = spreadsheetLocal.getSheetByName("DatosKoboProg");
+
+    if (!hojaOrigen) {
+      ui.alert('❌ Error', 'No se encontró la hoja "DatosKoboProg".\n\nPrimero importa los datos de KoboToolbox.', ui.ButtonSet.OK);
+      return;
+    }
+
+    const datosOrigen = hojaOrigen.getDataRange().getValues();
+
+    if (datosOrigen.length === 0) {
+      ui.alert('❌ Error', 'La hoja "DatosKoboProg" está vacía.', ui.ButtonSet.OK);
+      return;
+    }
+
+    const encabezadosOrigen = datosOrigen[0];
+
+    // Leer hoja destino (Lista de Espera)
+    const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID_PROG);
+    const hojaDestino = spreadsheetDestino.getSheetByName(HOJA_DESTINO_NOMBRE_PROG);
+
+    if (!hojaDestino) {
+      ui.alert('❌ Error', 'No se encontró la hoja "Lista de Espera"', ui.ButtonSet.OK);
+      return;
+    }
+
+    const datosDestino = hojaDestino.getDataRange().getValues();
+    const encabezadosDestino = datosDestino[0];
+
+    // Mostrar en logs
+    Logger.log('='.repeat(80));
+    Logger.log('DIAGNÓSTICO DE COLUMNAS - DERIVACIONES DE PROGRAMAS');
+    Logger.log('='.repeat(80));
+
+    Logger.log('\n📋 COLUMNAS EN KOBOTOOLBOX (DatosKoboProg):');
+    Logger.log('-'.repeat(80));
+    encabezadosOrigen.forEach((col, idx) => {
+      Logger.log(`  [${idx}] "${col}"`);
+    });
+
+    Logger.log('\n📋 COLUMNAS EN LISTA DE ESPERA (Destino):');
+    Logger.log('-'.repeat(80));
+    encabezadosDestino.forEach((col, idx) => {
+      Logger.log(`  [${idx}] "${col}"`);
+    });
+
+    Logger.log('\n🔍 BUSCANDO "Programa de Creamos" EN KOBOTOOLBOX:');
+    Logger.log('-'.repeat(80));
+
+    const posiblesNombres = [
+      'programa de creamos',
+      'programa creamos',
+      'creamos',
+      'programa',
+      'organización',
+      'organizacion',
+      'nombre de organización',
+      'derivación',
+      'derivacion'
+    ];
+
+    let encontrado = false;
+    encabezadosOrigen.forEach((col, idx) => {
+      const colNorm = col.toString().trim().toLowerCase();
+      posiblesNombres.forEach(nombre => {
+        if (colNorm.includes(nombre)) {
+          Logger.log(`  ✓ POSIBLE COINCIDENCIA [${idx}]: "${col}"`);
+          encontrado = true;
+        }
+      });
+    });
+
+    if (!encontrado) {
+      Logger.log('  ❌ NO se encontró ninguna columna que contenga "programa", "creamos" u "organización"');
+    }
+
+    Logger.log('\n📊 EJEMPLO DE DATOS (Primera fila):');
+    Logger.log('-'.repeat(80));
+    if (datosOrigen.length > 1) {
+      const primeraFila = datosOrigen[1];
+      encabezadosOrigen.forEach((col, idx) => {
+        if (primeraFila[idx]) {
+          Logger.log(`  "${col}": "${primeraFila[idx]}"`);
+        }
+      });
+    }
+
+    Logger.log('\n' + '='.repeat(80));
+    Logger.log('DIAGNÓSTICO COMPLETO');
+    Logger.log('='.repeat(80));
+
+    ui.alert(
+      '✅ Diagnóstico completo',
+      'Revisa los logs (Ver → Registros de ejecución)\n\n' +
+      'Busca la sección "POSIBLE COINCIDENCIA" para identificar\n' +
+      'qué columna de KoboToolbox contiene el programa.',
+      ui.ButtonSet.OK
+    );
+
+  } catch (error) {
+    ui.alert('❌ Error', error.message, ui.ButtonSet.OK);
+    Logger.log('Error en diagnóstico: ' + error.stack);
+  }
+}
