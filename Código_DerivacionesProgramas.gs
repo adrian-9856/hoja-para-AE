@@ -586,6 +586,8 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
     'terapia individual': 'servicio que solicita',
     'servicio al que deriva': 'servicio que solicita',
     'programa de creamos': 'programa de creamos / organización',
+    'programa creamos': 'programa de creamos / organización',
+    'creamos': 'programa de creamos / organización',
     'organización': 'programa de creamos / organización',
     'nombre de organización': 'programa de creamos / organización',
     'nombre de quien deriva': 'nombre de quien deriva o refiere',
@@ -623,8 +625,10 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
         destino: indiceDestino,
         nombre: encabezadosOrigen[i]
       });
+      Logger.log(`[Programas] ✓ Mapeado: "${encabezadosOrigen[i]}" → "${encabezadosDestino[indiceDestino]}"`);
     } else {
       columnasIgnoradas.push(encabezadosOrigen[i]);
+      Logger.log(`[Programas] ✗ Ignorada: "${encabezadosOrigen[i]}" (no encontró destino)`);
     }
   }
 
@@ -791,6 +795,14 @@ function sincronizarConHojaPrincipalProg() {
           nuevaFila[especial.destino] = valores.join(' ').trim();
         }
       });
+
+      // Log específico para verificar "Programa de Creamos / Organización"
+      const indiceProgramaDestino = encabezadosDestino.findIndex(col =>
+        col.toString().trim().toLowerCase() === 'programa de creamos / organización'
+      );
+      if (indiceProgramaDestino >= 0 && nuevaFila[indiceProgramaDestino]) {
+        Logger.log(`[Programas] Fila ${i + 1} - Programa: "${nuevaFila[indiceProgramaDestino]}"`);
+      }
 
       filasNuevas.push(nuevaFila);
       datosExistentes.add(idUnico);
@@ -1109,6 +1121,14 @@ function sincronizarAutomaticoProg() {
           nuevaFila[especial.destino] = valores.join(' ').trim();
         }
       });
+
+      // Log específico para verificar "Programa de Creamos / Organización"
+      const indiceProgramaDestino = encabezadosDestino.findIndex(col =>
+        col.toString().trim().toLowerCase() === 'programa de creamos / organización'
+      );
+      if (indiceProgramaDestino >= 0 && nuevaFila[indiceProgramaDestino]) {
+        Logger.log(`[Programas Auto] Fila ${i + 1} - Programa: "${nuevaFila[indiceProgramaDestino]}"`);
+      }
 
       filasNuevas.push(nuevaFila);
       datosExistentes.add(idUnico); // Agregar al set para evitar duplicados en la misma sincronización
