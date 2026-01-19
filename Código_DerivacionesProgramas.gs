@@ -564,10 +564,19 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
   const indiceApellidos = encabezadosOrigen.findIndex(col =>
     col.toString().trim().toLowerCase() === 'apellidos'
   );
+  const indiceProgramaCreamos = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'programa de creamos'
+  );
+  const indiceOrganizacion = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'organización'
+  );
 
   // Buscar índice de Nombre Completo en destino
   const indiceNombreCompleto = encabezadosDestino.findIndex(col =>
     col.toString().trim().toLowerCase() === 'nombre completo'
+  );
+  const indiceProgramaOrganizacionDestino = encabezadosDestino.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'programa de creamos / organización'
   );
 
   // Si hay Nombres+Apellidos en origen y Nombre Completo en destino
@@ -578,6 +587,35 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
       destino: indiceNombreCompleto,
       nombre: 'Nombres + Apellidos → Nombre Completo'
     });
+  }
+
+  // NUEVO: Si hay Programa de Creamos + Organización en origen, combinarlos
+  if (indiceProgramaCreamos >= 0 && indiceOrganizacion >= 0 && indiceProgramaOrganizacionDestino >= 0) {
+    columnasEspeciales.push({
+      tipo: 'combinar',
+      origenes: [indiceProgramaCreamos, indiceOrganizacion],
+      destino: indiceProgramaOrganizacionDestino,
+      nombre: 'Programa de Creamos + Organización → Programa de Creamos / Organización'
+    });
+    Logger.log('[Programas] ✓ Mapeo especial: "Programa de Creamos" + "Organización" → "Programa de Creamos / Organización"');
+  } else if (indiceProgramaCreamos >= 0 && indiceProgramaOrganizacionDestino >= 0) {
+    // Si solo hay Programa de Creamos (sin Organización), mapear solo ese
+    columnasEspeciales.push({
+      tipo: 'copiar',
+      origen: indiceProgramaCreamos,
+      destino: indiceProgramaOrganizacionDestino,
+      nombre: 'Programa de Creamos → Programa de Creamos / Organización'
+    });
+    Logger.log('[Programas] ✓ Mapeo especial: "Programa de Creamos" → "Programa de Creamos / Organización"');
+  } else if (indiceOrganizacion >= 0 && indiceProgramaOrganizacionDestino >= 0) {
+    // Si solo hay Organización (sin Programa de Creamos), mapear solo ese
+    columnasEspeciales.push({
+      tipo: 'copiar',
+      origen: indiceOrganizacion,
+      destino: indiceProgramaOrganizacionDestino,
+      nombre: 'Organización → Programa de Creamos / Organización'
+    });
+    Logger.log('[Programas] ✓ Mapeo especial: "Organización" → "Programa de Creamos / Organización"');
   }
 
   // Mapeo de columnas con nombres similares (case-insensitive y flexible)
@@ -604,6 +642,11 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
 
     // Saltar Nombres y Apellidos si ya se mapearon a Nombre Completo
     if ((i === indiceNombres || i === indiceApellidos) && indiceNombreCompleto >= 0) {
+      continue;
+    }
+
+    // Saltar Programa de Creamos y Organización si ya se mapearon en columnasEspeciales
+    if ((i === indiceProgramaCreamos || i === indiceOrganizacion) && indiceProgramaOrganizacionDestino >= 0) {
       continue;
     }
 
@@ -793,6 +836,8 @@ function sincronizarConHojaPrincipalProg() {
         if (especial.tipo === 'combinar') {
           const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
           nuevaFila[especial.destino] = valores.join(' ').trim();
+        } else if (especial.tipo === 'copiar') {
+          nuevaFila[especial.destino] = filaOrigen[especial.origen] || '';
         }
       });
 
@@ -933,6 +978,8 @@ function sincronizacionInicialProg() {
         if (especial.tipo === 'combinar') {
           const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
           nuevaFila[especial.destino] = valores.join(' ').trim();
+        } else if (especial.tipo === 'copiar') {
+          nuevaFila[especial.destino] = filaOrigen[especial.origen] || '';
         }
       });
 
@@ -1119,6 +1166,8 @@ function sincronizarAutomaticoProg() {
         if (especial.tipo === 'combinar') {
           const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
           nuevaFila[especial.destino] = valores.join(' ').trim();
+        } else if (especial.tipo === 'copiar') {
+          nuevaFila[especial.destino] = filaOrigen[especial.origen] || '';
         }
       });
 
