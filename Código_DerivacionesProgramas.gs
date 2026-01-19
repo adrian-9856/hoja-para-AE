@@ -777,6 +777,16 @@ function sincronizarConHojaPrincipalProg() {
 
     Logger.log(`[Programas] IDs existentes: ${datosExistentes.size}, Teléfonos únicos: ${telefonosExistentes.size}`);
 
+    // Verificar si el formulario tiene campos de persona
+    const tieneNombres = indiceNombresOrigen >= 0;
+    const tieneTelefono = indiceTelefonoOrigen >= 0;
+    const puedeDetectarDuplicados = tieneNombres || tieneTelefono;
+
+    if (!puedeDetectarDuplicados) {
+      Logger.log('[Programas] ⚠️ ADVERTENCIA: El formulario NO tiene campos de Nombres ni Teléfono');
+      Logger.log('[Programas] ⚠️ Sistema anti-duplicados DESACTIVADO - Se enviarán TODOS los datos');
+    }
+
     const filasNuevas = [];
     let filasOmitidasPorDuplicado = 0;
     let filasSinID = 0;
@@ -784,7 +794,7 @@ function sincronizarConHojaPrincipalProg() {
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
 
-      // Crear ID único para esta fila
+      // Crear ID único para esta fila (solo si tiene campos de persona)
       const indicesOrigen = {
         telefono: indiceTelefonoOrigen,
         nombres: indiceNombresOrigen,
@@ -793,39 +803,42 @@ function sincronizarConHojaPrincipalProg() {
 
       const idUnico = crearIDUnicoProg(filaOrigen, indicesOrigen);
 
-      // DOBLE VERIFICACIÓN de duplicados
+      // DOBLE VERIFICACIÓN de duplicados (solo si puede detectar duplicados)
       let esDuplicado = false;
 
-      // Verificación 1: ID compuesto
-      if (idUnico && datosExistentes.has(idUnico)) {
-        esDuplicado = true;
-        Logger.log(`[Programas] Fila ${i + 1} omitida: duplicado por ID compuesto (${idUnico})`);
-      }
+      if (puedeDetectarDuplicados) {
+        // Verificación 1: ID compuesto
+        if (idUnico && datosExistentes.has(idUnico)) {
+          esDuplicado = true;
+          Logger.log(`[Programas] Fila ${i + 1} omitida: duplicado por ID compuesto (${idUnico})`);
+        }
 
-      // Verificación 2: Solo teléfono normalizado (si tiene teléfono)
-      if (!esDuplicado && indiceTelefonoOrigen >= 0) {
-        const telefono = filaOrigen[indiceTelefonoOrigen];
-        if (telefono) {
-          const telNormalizado = normalizarTelefonoProg(telefono);
-          if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
-            esDuplicado = true;
-            Logger.log(`[Programas] Fila ${i + 1} omitida: duplicado por teléfono (${telNormalizado})`);
+        // Verificación 2: Solo teléfono normalizado (si tiene teléfono)
+        if (!esDuplicado && indiceTelefonoOrigen >= 0) {
+          const telefono = filaOrigen[indiceTelefonoOrigen];
+          if (telefono) {
+            const telNormalizado = normalizarTelefonoProg(telefono);
+            if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
+              esDuplicado = true;
+              Logger.log(`[Programas] Fila ${i + 1} omitida: duplicado por teléfono (${telNormalizado})`);
+            }
           }
         }
-      }
 
-      // Si es duplicado por cualquier método, omitir
-      if (esDuplicado) {
-        filasOmitidasPorDuplicado++;
-        continue;
-      }
+        // Si es duplicado por cualquier método, omitir
+        if (esDuplicado) {
+          filasOmitidasPorDuplicado++;
+          continue;
+        }
 
-      // Si no tiene datos suficientes para identificar, omitir por seguridad
-      if (!idUnico) {
-        filasSinID++;
-        Logger.log(`[Programas] Fila ${i + 1} omitida: sin datos suficientes para identificar`);
-        continue;
+        // Si no tiene datos suficientes para identificar, omitir por seguridad
+        if (!idUnico) {
+          filasSinID++;
+          Logger.log(`[Programas] Fila ${i + 1} omitida: sin datos suficientes para identificar`);
+          continue;
+        }
       }
+      // Si no puede detectar duplicados, enviar todos los datos (sin verificar)
 
       // Es nuevo, crear la fila
       const nuevaFila = new Array(encabezadosDestino.length).fill('');
@@ -1109,6 +1122,16 @@ function sincronizarAutomaticoProg() {
 
     Logger.log(`[Programas Auto] IDs: ${datosExistentes.size}, Teléfonos: ${telefonosExistentes.size}`);
 
+    // Verificar si el formulario tiene campos de persona
+    const tieneNombres = indiceNombresOrigen >= 0;
+    const tieneTelefono = indiceTelefonoOrigen >= 0;
+    const puedeDetectarDuplicados = tieneNombres || tieneTelefono;
+
+    if (!puedeDetectarDuplicados) {
+      Logger.log('[Programas Auto] ⚠️ ADVERTENCIA: El formulario NO tiene campos de Nombres ni Teléfono');
+      Logger.log('[Programas Auto] ⚠️ Sistema anti-duplicados DESACTIVADO - Se enviarán TODOS los datos');
+    }
+
     const filasNuevas = [];
     const indicesOrigen = {
       telefono: indiceTelefonoOrigen,
@@ -1123,39 +1146,42 @@ function sincronizarAutomaticoProg() {
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
 
-      // Crear ID único para esta fila
+      // Crear ID único para esta fila (solo si tiene campos de persona)
       const idUnico = crearIDUnicoProg(filaOrigen, indicesOrigen);
 
-      // DOBLE VERIFICACIÓN de duplicados
+      // DOBLE VERIFICACIÓN de duplicados (solo si puede detectar duplicados)
       let esDuplicado = false;
 
-      // Verificación 1: ID compuesto
-      if (idUnico && datosExistentes.has(idUnico)) {
-        esDuplicado = true;
-      }
+      if (puedeDetectarDuplicados) {
+        // Verificación 1: ID compuesto
+        if (idUnico && datosExistentes.has(idUnico)) {
+          esDuplicado = true;
+        }
 
-      // Verificación 2: Solo teléfono
-      if (!esDuplicado && indiceTelefonoOrigen >= 0) {
-        const telefono = filaOrigen[indiceTelefonoOrigen];
-        if (telefono) {
-          const telNormalizado = normalizarTelefonoProg(telefono);
-          if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
-            esDuplicado = true;
+        // Verificación 2: Solo teléfono
+        if (!esDuplicado && indiceTelefonoOrigen >= 0) {
+          const telefono = filaOrigen[indiceTelefonoOrigen];
+          if (telefono) {
+            const telNormalizado = normalizarTelefonoProg(telefono);
+            if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
+              esDuplicado = true;
+            }
           }
         }
-      }
 
-      // Omitir duplicados
-      if (esDuplicado) {
-        filasOmitidasPorDuplicado++;
-        continue;
-      }
+        // Omitir duplicados
+        if (esDuplicado) {
+          filasOmitidasPorDuplicado++;
+          continue;
+        }
 
-      // Omitir si no tiene ID
-      if (!idUnico) {
-        filasSinID++;
-        continue;
+        // Omitir si no tiene ID
+        if (!idUnico) {
+          filasSinID++;
+          continue;
+        }
       }
+      // Si no puede detectar duplicados, enviar todos los datos (sin verificar)
 
       // Es una fila nueva, mapear columnas
       const nuevaFila = new Array(encabezadosDestino.length).fill('');
