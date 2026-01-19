@@ -630,8 +630,10 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
     'nombre de organización': 'programa de creamos / organización',
     'nombre de quien deriva': 'nombre de quien deriva o refiere',
     'derivación o referencia': 'derivación o referencia',
-    'motivo de derivación u referencia': 'motivo de derivación u referencia',
+    'motivo de derivación u referencia': 'malestar principal',
+    'motivo de derivación o referencia': 'malestar principal',
     'motivo de derivación': 'malestar principal',
+    'malestar': 'malestar principal',
     'teléfono': 'teléfono',
     'dirección': 'dirección'
   };
