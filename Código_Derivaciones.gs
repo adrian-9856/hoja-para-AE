@@ -4,7 +4,7 @@
  */
 
 // URL directa de exportación de KoboToolbox - DERIVACIONES
-const KOBO_EXPORT_URL_DERIVACIONES = "https://kf.kobotoolbox.org/api/v2/assets/aPAe8WZjdW8Pp3bxLVkPtc/export-settings/esqjDCRhVLeFK8ETYM7Dm85/data.csv";
+const KOBO_EXPORT_URL_DERIVACIONES = "https://kf.kobotoolbox.org/api/v2/assets/aPAe8WZjdW8Pp3bxLVkPtc/export-settings/esxMhVxGG8yjgoaFV9FxKjA/data.csv";
 
 // ID del archivo de Google Sheets donde está la hoja de destino
 const SPREADSHEET_DESTINO_ID_DERIVACIONES = "1T0YCTaiu6qxB6Hzq0nth3ZlJpCeKlGTrw2afncW11ME";
@@ -591,11 +591,20 @@ function mapearColumnasDerivaciones(encabezadosOrigen, encabezadosDestino) {
     'terapia individual': 'servicio que solicita',
     'servicio al que deriva': 'servicio que solicita',
     'programa de creamos': 'programa de creamos / organización',
+    'programa creamos': 'programa de creamos / organización',
+    'programa que refiere': 'programa de creamos / organización',
+    'creamos': 'programa de creamos / organización',
+    'organización': 'programa de creamos / organización',
     'nombre de organización': 'programa de creamos / organización',
     'nombre de quien deriva': 'nombre de quien deriva o refiere',
+    'persona que refiere': 'nombre de quien deriva o refiere',
     'derivación o referencia': 'derivación o referencia',
-    'motivo de derivación u referencia': 'motivo de derivación u referencia',
+    'motivo de derivación u referencia': 'malestar principal',
+    'motivo de derivación o referencia': 'malestar principal',
     'motivo de derivación': 'malestar principal',
+    'motivo de referencia': 'malestar principal',
+    'malestar': 'malestar principal',
+    'nombre completo': 'nombre completo',
     'teléfono': 'teléfono',
     'dirección': 'dirección'
   };
@@ -627,8 +636,10 @@ function mapearColumnasDerivaciones(encabezadosOrigen, encabezadosDestino) {
         destino: indiceDestino,
         nombre: encabezadosOrigen[i]
       });
+      Logger.log(`[Derivaciones] ✓ Mapeado: "${encabezadosOrigen[i]}" → "${encabezadosDestino[indiceDestino]}"`);
     } else {
       columnasIgnoradas.push(encabezadosOrigen[i]);
+      Logger.log(`[Derivaciones] ✗ Ignorada: "${encabezadosOrigen[i]}" (no encontró destino)`);
     }
   }
 
