@@ -4,7 +4,7 @@
  */
 
 // URL directa de exportación de KoboToolbox - DERIVACIONES DE PROGRAMAS
-const KOBO_EXPORT_URL_PROG = "https://kf.kobotoolbox.org/api/v2/assets/an6ckBVY2QRQPhTdKiEfcF/export-settings/esTWru6BMfvmXmFEDJm2WG7/data.csv";
+const KOBO_EXPORT_URL_PROG = "https://kf.kobotoolbox.org/api/v2/assets/an6ckBVY2QRQPhTdKiEfcF/export-settings/esr6NXWYUDifrWNeZVUVgoC/data.csv";
 
 // ID del archivo de Google Sheets donde está la hoja de destino
 const SPREADSHEET_DESTINO_ID_PROG = "1T0YCTaiu6qxB6Hzq0nth3ZlJpCeKlGTrw2afncW11ME";
@@ -567,6 +567,9 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
   const indiceProgramaCreamos = encabezadosOrigen.findIndex(col =>
     col.toString().trim().toLowerCase() === 'programa de creamos'
   );
+  const indiceProgramaQueRefiere = encabezadosOrigen.findIndex(col =>
+    col.toString().trim().toLowerCase() === 'programa que refiere'
+  );
   const indiceOrganizacion = encabezadosOrigen.findIndex(col =>
     col.toString().trim().toLowerCase() === 'organización'
   );
@@ -590,25 +593,27 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
   }
 
   // NUEVO: Si hay Programa de Creamos + Organización en origen, combinarlos
-  if (indiceProgramaCreamos >= 0 && indiceOrganizacion >= 0 && indiceProgramaOrganizacionDestino >= 0) {
+  const indiceProgramaOrigen = indiceProgramaCreamos >= 0 ? indiceProgramaCreamos : indiceProgramaQueRefiere;
+
+  if (indiceProgramaOrigen >= 0 && indiceOrganizacion >= 0 && indiceProgramaOrganizacionDestino >= 0) {
     columnasEspeciales.push({
       tipo: 'combinar',
-      origenes: [indiceProgramaCreamos, indiceOrganizacion],
+      origenes: [indiceProgramaOrigen, indiceOrganizacion],
       destino: indiceProgramaOrganizacionDestino,
-      nombre: 'Programa de Creamos + Organización → Programa de Creamos / Organización'
+      nombre: 'Programa + Organización → Programa de Creamos / Organización'
     });
-    Logger.log('[Programas] ✓ Mapeo especial: "Programa de Creamos" + "Organización" → "Programa de Creamos / Organización"');
-  } else if (indiceProgramaCreamos >= 0 && indiceProgramaOrganizacionDestino >= 0) {
-    // Si solo hay Programa de Creamos (sin Organización), mapear solo ese
+    Logger.log('[Programas] ✓ Mapeo especial: "Programa" + "Organización" → "Programa de Creamos / Organización"');
+  } else if (indiceProgramaOrigen >= 0 && indiceProgramaOrganizacionDestino >= 0) {
+    // Si solo hay Programa (sin Organización), mapear solo ese
     columnasEspeciales.push({
       tipo: 'copiar',
-      origen: indiceProgramaCreamos,
+      origen: indiceProgramaOrigen,
       destino: indiceProgramaOrganizacionDestino,
-      nombre: 'Programa de Creamos → Programa de Creamos / Organización'
+      nombre: 'Programa → Programa de Creamos / Organización'
     });
-    Logger.log('[Programas] ✓ Mapeo especial: "Programa de Creamos" → "Programa de Creamos / Organización"');
+    Logger.log('[Programas] ✓ Mapeo especial: "Programa" → "Programa de Creamos / Organización"');
   } else if (indiceOrganizacion >= 0 && indiceProgramaOrganizacionDestino >= 0) {
-    // Si solo hay Organización (sin Programa de Creamos), mapear solo ese
+    // Si solo hay Organización (sin Programa), mapear solo ese
     columnasEspeciales.push({
       tipo: 'copiar',
       origen: indiceOrganizacion,
@@ -626,14 +631,18 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
     'programa de creamos': 'programa de creamos / organización',
     'programa creamos': 'programa de creamos / organización',
     'creamos': 'programa de creamos / organización',
+    'programa que refiere': 'programa de creamos / organización',
     'organización': 'programa de creamos / organización',
     'nombre de organización': 'programa de creamos / organización',
     'nombre de quien deriva': 'nombre de quien deriva o refiere',
+    'persona que refiere': 'nombre de quien deriva o refiere',
     'derivación o referencia': 'derivación o referencia',
     'motivo de derivación u referencia': 'malestar principal',
     'motivo de derivación o referencia': 'malestar principal',
     'motivo de derivación': 'malestar principal',
+    'motivo de referencia': 'malestar principal',
     'malestar': 'malestar principal',
+    'nombre completo': 'nombre completo',
     'teléfono': 'teléfono',
     'dirección': 'dirección'
   };
@@ -647,8 +656,8 @@ function mapearColumnasDerivacionesProgramas(encabezadosOrigen, encabezadosDesti
       continue;
     }
 
-    // Saltar Programa de Creamos y Organización si ya se mapearon en columnasEspeciales
-    if ((i === indiceProgramaCreamos || i === indiceOrganizacion) && indiceProgramaOrganizacionDestino >= 0) {
+    // Saltar Programa de Creamos, Programa que refiere y Organización si ya se mapearon en columnasEspeciales
+    if ((i === indiceProgramaCreamos || i === indiceProgramaQueRefiere || i === indiceOrganizacion) && indiceProgramaOrganizacionDestino >= 0) {
       continue;
     }
 
