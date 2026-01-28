@@ -4,7 +4,7 @@
  */
 
 // URL directa de exportación de KoboToolbox - DERIVACIONES
-const KOBO_EXPORT_URL_DERIVACIONES = "https://kf.kobotoolbox.org/api/v2/assets/aPAe8WZjdW8Pp3bxLVkPtc/export-settings/esxMhVxGG8yjgoaFV9FxKjA/data.csv";
+const KOBO_EXPORT_URL_DERIVACIONES = "https://kf.kobotoolbox.org/api/v2/assets/aCxASXMEvmmwTfSM2ru4w9/export-settings/esXsXNnaVYrYn27GemkBprf/data.csv";
 
 // ID del archivo de Google Sheets donde está la hoja de destino
 const SPREADSHEET_DESTINO_ID_DERIVACIONES = "1T0YCTaiu6qxB6Hzq0nth3ZlJpCeKlGTrw2afncW11ME";
