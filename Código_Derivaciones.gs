@@ -127,8 +127,12 @@ function archivarYLimpiarDeriv() {
 }
 
 /**
- * Crea el menú personalizado al abrir la hoja
+ * NOTA: Esta función ya NO se usa automáticamente.
+ * El menú ahora se crea en MenuPrincipal.gs con la función onOpen()
+ *
+ * Esta función se mantiene comentada por si se necesita en el futuro.
  */
+/*
 function onOpenDerivaciones() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('📋 Lista de Espera')
@@ -148,6 +152,7 @@ function onOpenDerivaciones() {
       .addItem('Ver Estado de Sincronización', 'verEstadoSincronizacionDeriv'))
     .addToUi();
 }
+*/
 
 /**
  * Detecta el separador del CSV (coma o punto y coma)
