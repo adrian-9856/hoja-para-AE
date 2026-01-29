@@ -706,12 +706,11 @@ function mapearColumnasDerivaciones(encabezadosOrigen, encabezadosDestino) {
 }
 
 /**
- * Sincroniza datos con la hoja principal (VERSIÓN OPTIMIZADA - MÁS RÁPIDA)
+ * Sincroniza datos con la hoja principal
  */
 function sincronizarConHojaPrincipalDeriv() {
   const ui = SpreadsheetApp.getUi();
   const spreadsheetLocal = SpreadsheetApp.getActiveSpreadsheet();
-  const tiempoInicio = new Date().getTime();
 
   try {
     const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID_DERIVACIONES);
@@ -729,7 +728,6 @@ function sincronizarConHojaPrincipalDeriv() {
       return;
     }
 
-    // OPTIMIZACIÓN: Leer datos de una vez
     const datosOrigen = hojaOrigen.getDataRange().getValues();
     const datosDestino = hojaPrincipal.getDataRange().getValues();
 
@@ -746,11 +744,14 @@ function sincronizarConHojaPrincipalDeriv() {
     const encabezadosOrigen = datosOrigen[0];
     const encabezadosDestino = datosDestino[0];
 
-    // OPTIMIZACIÓN: Cachear el mapeo
-    const { mapeoColumnas, columnasEspeciales } =
+    const { mapeoColumnas, columnasEspeciales, columnasIgnoradas } =
       mapearColumnasDerivaciones(encabezadosOrigen, encabezadosDestino);
 
-    // Buscar índices de columnas clave UNA SOLA VEZ
+    Logger.log(`[Derivaciones] Columnas mapeadas: ${mapeoColumnas.length}`);
+    Logger.log(`[Derivaciones] Columnas especiales: ${columnasEspeciales.length}`);
+    Logger.log(`[Derivaciones] Columnas ignoradas: ${columnasIgnoradas.length}`);
+
+    // Buscar índices de columnas clave
     const indiceTelefonoDestino = encabezadosDestino.findIndex(col =>
       col.toString().trim().toLowerCase() === 'teléfono'
     );
@@ -769,119 +770,155 @@ function sincronizarConHojaPrincipalDeriv() {
       col.toString().trim().toLowerCase() === 'apellidos'
     );
 
-    // OPTIMIZACIÓN: Construir Sets más rápido (sin logging en el loop)
-    const datosExistentes = new Set();
-    const telefonosExistentes = new Set();
+    // Construir Sets de IDs existentes - DOBLE VERIFICACIÓN
+    const datosExistentes = new Set(); // ID compuesto
+    const telefonosExistentes = new Set(); // Solo teléfonos (respaldo)
 
-    const indicesDestino = {
-      telefono: indiceTelefonoDestino,
-      nombres: indiceNombresDestino,
-      apellidos: -1
-    };
+    Logger.log(`[Derivaciones] Construyendo set de datos existentes...`);
+    Logger.log(`[Derivaciones] Índice teléfono destino: ${indiceTelefonoDestino}`);
 
-    // Loop optimizado - sin logging excesivo
     for (let i = 1; i < datosDestino.length; i++) {
-      const idUnico = crearIDUnico(datosDestino[i], indicesDestino);
-      if (idUnico) datosExistentes.add(idUnico);
+      // ID compuesto
+      const indicesDestino = {
+        telefono: indiceTelefonoDestino,
+        nombres: indiceNombresDestino,
+        apellidos: -1
+      };
 
-      if (indiceTelefonoDestino >= 0 && datosDestino[i][indiceTelefonoDestino]) {
-        const telNormalizado = normalizarTelefono(datosDestino[i][indiceTelefonoDestino]);
-        if (telNormalizado) telefonosExistentes.add(telNormalizado);
+      const idUnico = crearIDUnico(datosDestino[i], indicesDestino);
+      if (idUnico) {
+        datosExistentes.add(idUnico);
+      }
+
+      // RESPALDO: También guardar solo teléfono normalizado
+      if (indiceTelefonoDestino >= 0) {
+        const telefono = datosDestino[i][indiceTelefonoDestino];
+        if (telefono) {
+          const telNormalizado = normalizarTelefono(telefono);
+          if (telNormalizado) {
+            telefonosExistentes.add(telNormalizado);
+          }
+        }
       }
     }
 
-    // OPTIMIZACIÓN: Precalcular índices antes del loop
-    const indicesOrigen = {
-      telefono: indiceTelefonoOrigen,
-      nombres: indiceNombresOrigen,
-      apellidos: indiceApellidosOrigen
-    };
+    Logger.log(`[Derivaciones] IDs existentes: ${datosExistentes.size}, Teléfonos únicos: ${telefonosExistentes.size}`);
 
     const filasNuevas = [];
     let filasOmitidasPorDuplicado = 0;
     let filasSinID = 0;
 
-    // OPTIMIZACIÓN: Loop más rápido sin logging excesivo
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
+
+      // Crear ID único para esta fila
+      const indicesOrigen = {
+        telefono: indiceTelefonoOrigen,
+        nombres: indiceNombresOrigen,
+        apellidos: indiceApellidosOrigen
+      };
+
       const idUnico = crearIDUnico(filaOrigen, indicesOrigen);
 
-      // Verificación rápida de duplicados
+      // DOBLE VERIFICACIÓN de duplicados
       let esDuplicado = false;
 
+      // Verificación 1: ID compuesto
       if (idUnico && datosExistentes.has(idUnico)) {
+        esDuplicado = true;
+        Logger.log(`[Derivaciones] Fila ${i + 1} omitida: duplicado por ID compuesto (${idUnico})`);
+      }
+
+      // Verificación 2: Solo teléfono normalizado (si tiene teléfono)
+      if (!esDuplicado && indiceTelefonoOrigen >= 0) {
+        const telefono = filaOrigen[indiceTelefonoOrigen];
+        if (telefono) {
+          const telNormalizado = normalizarTelefono(telefono);
+          if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
+            esDuplicado = true;
+            Logger.log(`[Derivaciones] Fila ${i + 1} omitida: duplicado por teléfono (${telNormalizado})`);
+          }
+        }
+      }
+
+      // Si es duplicado por cualquier método, omitir
+      if (esDuplicado) {
         filasOmitidasPorDuplicado++;
         continue;
       }
 
-      if (indiceTelefonoOrigen >= 0 && filaOrigen[indiceTelefonoOrigen]) {
-        const telNormalizado = normalizarTelefono(filaOrigen[indiceTelefonoOrigen]);
-        if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
-          filasOmitidasPorDuplicado++;
-          continue;
-        }
-      }
-
+      // Si no tiene datos suficientes para identificar, omitir por seguridad
       if (!idUnico) {
         filasSinID++;
+        Logger.log(`[Derivaciones] Fila ${i + 1} omitida: sin datos suficientes para identificar`);
         continue;
       }
 
-      // Mapear columnas - optimizado
+      // Es nuevo, crear la fila
       const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
-      for (let j = 0; j < mapeoColumnas.length; j++) {
-        const mapeo = mapeoColumnas[j];
+      mapeoColumnas.forEach(mapeo => {
         nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
-      }
+      });
 
-      for (let j = 0; j < columnasEspeciales.length; j++) {
-        const especial = columnasEspeciales[j];
+      columnasEspeciales.forEach(especial => {
         if (especial.tipo === 'combinar') {
-          const valores = especial.origenes
-            .map(idx => filaOrigen[idx] || '')
-            .filter(v => v && v.toString().trim() !== '');
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
           nuevaFila[especial.destino] = valores.join(' ').trim();
         }
-      }
+      });
 
       filasNuevas.push(nuevaFila);
+      // Agregar al set para evitar duplicados en la misma sincronización
       datosExistentes.add(idUnico);
+      Logger.log(`[Derivaciones] Fila ${i + 1} agregada (ID: ${idUnico})`);
     }
 
+    Logger.log(`[Derivaciones] Resumen: ${filasNuevas.length} nuevas, ${filasOmitidasPorDuplicado} duplicadas, ${filasSinID} sin ID`);
+
+    Logger.log(`[Derivaciones] Filas nuevas detectadas: ${filasNuevas.length}`);
+
     if (filasNuevas.length === 0) {
-      const tiempoTotal = ((new Date().getTime() - tiempoInicio) / 1000).toFixed(1);
       ui.alert(
         'ℹ️ Sin cambios',
-        `No hay datos nuevos para sincronizar.\n\nTodos los registros ya existen en Lista de Espera.\n\n⏱️ Tiempo: ${tiempoTotal}s`,
+        'No hay datos nuevos para sincronizar.\n\nTodos los registros ya existen en Lista de Espera.',
         ui.ButtonSet.OK
       );
       return;
     }
 
-    // OPTIMIZACIÓN: Encontrar última fila más rápido
-    const ultimaFila = hojaPrincipal.getLastRow();
+    // CORRECCIÓN: Usar función para encontrar última fila con datos reales
+    const ultimaFila = encontrarUltimaFilaConDatosDeriv(hojaPrincipal);
+    Logger.log(`[Derivaciones] Última fila con datos: ${ultimaFila}`);
+    Logger.log(`[Derivaciones] Insertando en fila: ${ultimaFila + 1}`);
 
-    // OPTIMIZACIÓN: Escribir todo de una vez (operación más rápida)
+    // Insertar justo después de la última fila con datos
     hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosDestino.length).setValues(filasNuevas);
 
-    // Guardar propiedades
     const propiedades = PropertiesService.getScriptProperties();
     propiedades.setProperty('ULTIMA_SINCRONIZACION_DERIV', new Date().toLocaleString('es-ES'));
     propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS_DERIV', filasNuevas.length.toString());
 
-    // Archivar y limpiar automáticamente (sin logging excesivo)
-    archivarYLimpiarDeriv();
+    let mensaje = `✅ Se agregaron ${filasNuevas.length} filas nuevas a "${HOJA_DESTINO_NOMBRE_DERIVACIONES}"\n\n`;
+    mensaje += `✓ Inserción en fila: ${ultimaFila + 1}\n`;
+    mensaje += `✓ Columnas mapeadas: ${mapeoColumnas.length}\n`;
+    mensaje += `✓ Columnas especiales: ${columnasEspeciales.length}\n`;
 
-    // Calcular tiempo total
-    const tiempoTotal = ((new Date().getTime() - tiempoInicio) / 1000).toFixed(1);
-
-    let mensaje = `✅ Se agregaron ${filasNuevas.length} filas nuevas\n\n`;
-    mensaje += `✓ Filas: ${ultimaFila + 1} a ${ultimaFila + filasNuevas.length}\n`;
-    mensaje += `✓ Duplicados omitidos: ${filasOmitidasPorDuplicado}\n`;
-    mensaje += `⏱️ Tiempo: ${tiempoTotal}s`;
+    if (columnasEspeciales.length > 0) {
+      mensaje += `\n📋 Mapeos especiales:\n`;
+      columnasEspeciales.forEach(e => {
+        mensaje += `  • ${e.nombre}\n`;
+      });
+    }
 
     ui.alert('✅ Sincronización exitosa', mensaje, ui.ButtonSet.OK);
+
+    // ARCHIVAR Y LIMPIAR automáticamente después de sincronizar
+    Logger.log('[Derivaciones] Archivando y limpiando datos...');
+    const archivoExitoso = archivarYLimpiarDeriv();
+    if (archivoExitoso) {
+      Logger.log('[Derivaciones] ✅ Datos archivados y DatosKoboDeriv limpiado');
+    }
 
   } catch (error) {
     ui.alert('❌ Error', 'Error al sincronizar: ' + error.message, ui.ButtonSet.OK);
@@ -996,26 +1033,37 @@ function sincronizacionInicialDeriv() {
 }
 
 /**
- * Sincronización automática (silenciosa) - VERSIÓN OPTIMIZADA
+ * Sincronización automática (silenciosa)
  */
 function sincronizarAutomaticoDeriv() {
   try {
     actualizarDatosAutomaticoDeriv();
 
+    Utilities.sleep(1000);
+
     const spreadsheetDestino = SpreadsheetApp.openById(SPREADSHEET_DESTINO_ID_DERIVACIONES);
     const hojaPrincipal = spreadsheetDestino.getSheetByName(HOJA_DESTINO_NOMBRE_DERIVACIONES);
 
-    if (!hojaPrincipal) return;
+    if (!hojaPrincipal) {
+      Logger.log(`[Derivaciones] No se encontró la hoja "${HOJA_DESTINO_NOMBRE_DERIVACIONES}"`);
+      return;
+    }
 
     const spreadsheetLocal = SpreadsheetApp.getActiveSpreadsheet();
     const hojaOrigen = spreadsheetLocal.getSheetByName("DatosKoboDeriv");
 
-    if (!hojaOrigen) return;
+    if (!hojaOrigen) {
+      Logger.log('[Derivaciones] No se encontró la hoja "DatosKoboDeriv"');
+      return;
+    }
 
     const datosOrigen = hojaOrigen.getDataRange().getValues();
     const datosDestino = hojaPrincipal.getDataRange().getValues();
 
-    if (datosOrigen.length <= 1 || datosDestino.length === 0) return;
+    if (datosOrigen.length === 0 || datosDestino.length === 0) {
+      Logger.log('[Derivaciones] Sin datos en origen o destino');
+      return;
+    }
 
     const encabezadosOrigen = datosOrigen[0];
     const encabezadosDestino = datosDestino[0];
@@ -1042,84 +1090,117 @@ function sincronizarAutomaticoDeriv() {
       col.toString().trim().toLowerCase() === 'apellidos'
     );
 
-    // OPTIMIZACIÓN: Construir Sets más rápido
+    // Construir Sets de IDs existentes - DOBLE VERIFICACIÓN
     const datosExistentes = new Set();
     const telefonosExistentes = new Set();
-    const indicesDestino = {
-      telefono: indiceTelefonoDestino,
-      nombres: indiceNombresDestino,
-      apellidos: -1
-    };
 
     for (let i = 1; i < datosDestino.length; i++) {
-      const idUnico = crearIDUnico(datosDestino[i], indicesDestino);
-      if (idUnico) datosExistentes.add(idUnico);
+      // ID compuesto
+      const indicesDestino = {
+        telefono: indiceTelefonoDestino,
+        nombres: indiceNombresDestino,
+        apellidos: -1
+      };
 
-      if (indiceTelefonoDestino >= 0 && datosDestino[i][indiceTelefonoDestino]) {
-        const telNormalizado = normalizarTelefono(datosDestino[i][indiceTelefonoDestino]);
-        if (telNormalizado) telefonosExistentes.add(telNormalizado);
+      const idUnico = crearIDUnico(datosDestino[i], indicesDestino);
+      if (idUnico) {
+        datosExistentes.add(idUnico);
+      }
+
+      // RESPALDO: Solo teléfono
+      if (indiceTelefonoDestino >= 0) {
+        const telefono = datosDestino[i][indiceTelefonoDestino];
+        if (telefono) {
+          const telNormalizado = normalizarTelefono(telefono);
+          if (telNormalizado) {
+            telefonosExistentes.add(telNormalizado);
+          }
+        }
       }
     }
 
-    const indicesOrigen = {
-      telefono: indiceTelefonoOrigen,
-      nombres: indiceNombresOrigen,
-      apellidos: indiceApellidosOrigen
-    };
+    Logger.log(`[Derivaciones Auto] IDs: ${datosExistentes.size}, Teléfonos: ${telefonosExistentes.size}`);
 
     const filasNuevas = [];
     let duplicados = 0;
 
-    // OPTIMIZACIÓN: Loop sin logging excesivo
     for (let i = 1; i < datosOrigen.length; i++) {
       const filaOrigen = datosOrigen[i];
+
+      // Crear ID único
+      const indicesOrigen = {
+        telefono: indiceTelefonoOrigen,
+        nombres: indiceNombresOrigen,
+        apellidos: indiceApellidosOrigen
+      };
+
       const idUnico = crearIDUnico(filaOrigen, indicesOrigen);
 
+      // DOBLE VERIFICACIÓN de duplicados
+      let esDuplicado = false;
+
+      // Verificación 1: ID compuesto
       if (idUnico && datosExistentes.has(idUnico)) {
+        esDuplicado = true;
+      }
+
+      // Verificación 2: Solo teléfono
+      if (!esDuplicado && indiceTelefonoOrigen >= 0) {
+        const telefono = filaOrigen[indiceTelefonoOrigen];
+        if (telefono) {
+          const telNormalizado = normalizarTelefono(telefono);
+          if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
+            esDuplicado = true;
+          }
+        }
+      }
+
+      // Omitir duplicados
+      if (esDuplicado) {
         duplicados++;
         continue;
       }
 
-      if (indiceTelefonoOrigen >= 0 && filaOrigen[indiceTelefonoOrigen]) {
-        const telNormalizado = normalizarTelefono(filaOrigen[indiceTelefonoOrigen]);
-        if (telNormalizado && telefonosExistentes.has(telNormalizado)) {
-          duplicados++;
-          continue;
-        }
+      // Omitir si no tiene ID
+      if (!idUnico) {
+        continue;
       }
 
-      if (!idUnico) continue;
-
+      // Es nuevo
       const nuevaFila = new Array(encabezadosDestino.length).fill('');
 
-      for (let j = 0; j < mapeoColumnas.length; j++) {
-        const mapeo = mapeoColumnas[j];
+      mapeoColumnas.forEach(mapeo => {
         nuevaFila[mapeo.destino] = filaOrigen[mapeo.origen] || '';
-      }
+      });
 
-      for (let j = 0; j < columnasEspeciales.length; j++) {
-        const especial = columnasEspeciales[j];
+      columnasEspeciales.forEach(especial => {
         if (especial.tipo === 'combinar') {
-          const valores = especial.origenes
-            .map(idx => filaOrigen[idx] || '')
-            .filter(v => v && v.toString().trim() !== '');
+          const valores = especial.origenes.map(idx => filaOrigen[idx] || '').filter(v => v && v.toString().trim() !== '');
           nuevaFila[especial.destino] = valores.join(' ').trim();
         }
-      }
+      });
 
       filasNuevas.push(nuevaFila);
       datosExistentes.add(idUnico);
     }
 
+    Logger.log(`[Derivaciones] Automático: ${filasNuevas.length} nuevas, ${duplicados} duplicadas`);
+
     if (filasNuevas.length > 0) {
-      const ultimaFila = hojaPrincipal.getLastRow();
+      const ultimaFila = encontrarUltimaFilaConDatosDeriv(hojaPrincipal);
       hojaPrincipal.getRange(ultimaFila + 1, 1, filasNuevas.length, encabezadosDestino.length).setValues(filasNuevas);
 
       const propiedades = PropertiesService.getScriptProperties();
       propiedades.setProperty('ULTIMA_SINCRONIZACION_DERIV', new Date().toLocaleString('es-ES'));
       propiedades.setProperty('ULTIMA_SINCRONIZACION_FILAS_DERIV', filasNuevas.length.toString());
 
+      Logger.log(`[Derivaciones] Sincronización automática: ${filasNuevas.length} filas nuevas en fila ${ultimaFila + 1}`);
+
+      // ARCHIVAR Y LIMPIAR automáticamente después de sincronizar
+      Logger.log('[Derivaciones Auto] Archivando y limpiando datos...');
       archivarYLimpiarDeriv();
+    } else {
+      Logger.log('[Derivaciones] Sincronización automática: sin datos nuevos');
     }
 
   } catch (error) {
