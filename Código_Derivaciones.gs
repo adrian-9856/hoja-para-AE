@@ -354,20 +354,31 @@ function importarCSVdesdeKoboDeriv() {
 
     ui.alert('Importando datos', 'Por favor espera mientras se descargan los datos de Derivaciones...', ui.ButtonSet.OK);
 
+    Logger.log('[Derivaciones] Iniciando descarga desde: ' + KOBO_EXPORT_URL_DERIVACIONES);
+
     const response = UrlFetchApp.fetch(KOBO_EXPORT_URL_DERIVACIONES, {
-      muteHttpExceptions: true
+      muteHttpExceptions: true,
+      followRedirects: true,
+      validateHttpsCertificates: false
     });
 
     const statusCode = response.getResponseCode();
+    Logger.log('[Derivaciones] Código de respuesta: ' + statusCode);
 
     if (statusCode !== 200) {
-      throw new Error(`Error al conectar con KoboToolbox (código ${statusCode})`);
+      throw new Error(`Error al conectar con KoboToolbox (código ${statusCode}). Verifica que el link de exportación sea correcto.`);
     }
 
     const csv = response.getContentText();
+    Logger.log('[Derivaciones] Primeros 500 caracteres recibidos: ' + csv.substring(0, 500));
 
     if (!csv || csv.trim().length === 0) {
-      throw new Error('No se recibieron datos. El formulario podría estar vacío.');
+      throw new Error('No se recibieron datos. El formulario podría estar vacío o el link de exportación no es válido.');
+    }
+
+    // Verificar si es HTML (error común)
+    if (csv.trim().toLowerCase().startsWith('<!doctype') || csv.trim().toLowerCase().startsWith('<html')) {
+      throw new Error('El link está devolviendo una página HTML en lugar de CSV. Verifica que el link de exportación sea correcto y que esté configurado para exportar CSV público.');
     }
 
     Logger.log('[Derivaciones] CSV descargado correctamente. Tamaño: ' + csv.length + ' caracteres');
@@ -385,21 +396,40 @@ function importarCSVdesdeKoboDeriv() {
         Logger.log('[Derivaciones] Usando parser personalizado (punto y coma)');
       }
     } catch (e) {
-      Logger.log('[Derivaciones] Parser estándar falló, usando parser personalizado');
-      datos = parsearCSVDeriv(csv, separador);
+      Logger.log('[Derivaciones] Parser estándar falló: ' + e.message);
+      Logger.log('[Derivaciones] Intentando con parser personalizado...');
+      try {
+        datos = parsearCSVDeriv(csv, separador);
+      } catch (e2) {
+        throw new Error('No se pudo analizar el CSV. Error: ' + e2.message + '. Verifica que el link de exportación sea un CSV válido.');
+      }
     }
 
     if (!datos || datos.length === 0) {
-      throw new Error('No se encontraron datos para importar');
+      throw new Error('No se encontraron datos para importar. El CSV puede estar vacío.');
+    }
+
+    if (!datos[0] || datos[0].length === 0) {
+      throw new Error('No se encontraron encabezados en el CSV. Verifica el formato del archivo.');
     }
 
     datos = normalizarDatosDeriv(datos);
 
     Logger.log(`[Derivaciones] Datos parseados: ${datos.length} filas, ${datos[0].length} columnas`);
+    Logger.log('[Derivaciones] Encabezados: ' + datos[0].join(', '));
 
     // FILTRAR DATOS: Eliminar los que ya están en el Archivo
     datos = filtrarDatosYaArchivadosDeriv(datos);
     Logger.log(`[Derivaciones] Después del filtro: ${datos.length} filas`);
+
+    if (datos.length <= 1) {
+      ui.alert(
+        'ℹ️ Sin datos nuevos',
+        'No hay datos nuevos para importar. Todos los registros ya fueron procesados anteriormente.',
+        ui.ButtonSet.OK
+      );
+      return;
+    }
 
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     let hoja = spreadsheet.getSheetByName("DatosKoboDeriv");
@@ -440,17 +470,25 @@ function importarCSVdesdeKoboDeriv() {
 
     ui.alert(
       '✅ Importación exitosa',
-      `[Derivaciones] Se importaron ${numFilas - 1} registros con ${numColumnas} columnas`,
+      `[Derivaciones] Se importaron ${numFilas - 1} registros con ${numColumnas} columnas\n\nEncabezados: ${datos[0].slice(0, 5).join(', ')}...`,
       ui.ButtonSet.OK
     );
 
   } catch (error) {
+    const mensajeError = error.message || 'Error desconocido';
+    Logger.log('[Derivaciones] Error detallado: ' + error.stack);
+
     SpreadsheetApp.getUi().alert(
-      '❌ Error',
-      'Error al importar: ' + error.message,
+      '❌ Error al Importar',
+      `No se pudo importar automáticamente.\n\n` +
+      `Error: ${mensajeError}\n\n` +
+      `Solución:\n` +
+      `1. Verifica que el link de exportación sea correcto\n` +
+      `2. Asegúrate de que el formulario tenga datos\n` +
+      `3. Verifica que el link esté configurado como "público"\n` +
+      `4. Revisa los logs en: Ver → Registros de ejecución`,
       SpreadsheetApp.getUi().ButtonSet.OK
     );
-    Logger.log('[Derivaciones] Error detallado: ' + error.stack);
   }
 }
 
@@ -459,19 +497,29 @@ function importarCSVdesdeKoboDeriv() {
  */
 function actualizarDatosAutomaticoDeriv() {
   try {
+    Logger.log('[Derivaciones Auto] Iniciando actualización automática...');
+
     const response = UrlFetchApp.fetch(KOBO_EXPORT_URL_DERIVACIONES, {
-      muteHttpExceptions: true
+      muteHttpExceptions: true,
+      followRedirects: true,
+      validateHttpsCertificates: false
     });
 
     if (response.getResponseCode() !== 200) {
-      Logger.log('[Derivaciones] Error al actualizar: código ' + response.getResponseCode());
+      Logger.log('[Derivaciones Auto] Error al actualizar: código ' + response.getResponseCode());
       return;
     }
 
     const csv = response.getContentText();
 
     if (!csv || csv.trim().length === 0) {
-      Logger.log('[Derivaciones] No hay datos para actualizar');
+      Logger.log('[Derivaciones Auto] No hay datos para actualizar');
+      return;
+    }
+
+    // Verificar si es HTML
+    if (csv.trim().toLowerCase().startsWith('<!doctype') || csv.trim().toLowerCase().startsWith('<html')) {
+      Logger.log('[Derivaciones Auto] Error: El link está devolviendo HTML en lugar de CSV');
       return;
     }
 
@@ -485,7 +533,13 @@ function actualizarDatosAutomaticoDeriv() {
         datos = parsearCSVDeriv(csv, separador);
       }
     } catch (e) {
-      datos = parsearCSVDeriv(csv, separador);
+      Logger.log('[Derivaciones Auto] Error al parsear: ' + e.message);
+      try {
+        datos = parsearCSVDeriv(csv, separador);
+      } catch (e2) {
+        Logger.log('[Derivaciones Auto] Error fatal al parsear: ' + e2.message);
+        return;
+      }
     }
 
     if (!datos || datos.length === 0) {
