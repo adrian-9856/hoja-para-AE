@@ -130,6 +130,103 @@ function archivarYLimpiar() {
 }
 
 /**
+ * Filtra datos importados eliminando los que ya están en el Archivo
+ * Esto previene que datos ya procesados vuelvan a DatosKobo
+ */
+function filtrarDatosYaArchivados(datosImportados) {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const hojaArchivo = spreadsheet.getSheetByName('Archivo_Casos');
+
+    // Si no existe el archivo, retornar todos los datos (primera vez)
+    if (!hojaArchivo) {
+      Logger.log('[Casos Filtro] No existe Archivo_Casos, retornando todos los datos');
+      return datosImportados;
+    }
+
+    const datosArchivo = hojaArchivo.getDataRange().getValues();
+
+    // Si el archivo solo tiene encabezados, retornar todos
+    if (datosArchivo.length <= 1) {
+      Logger.log('[Casos Filtro] Archivo vacío, retornando todos los datos');
+      return datosImportados;
+    }
+
+    const encabezadosImportados = datosImportados[0];
+    const encabezadosArchivo = datosArchivo[0];
+
+    // Encontrar índice de Nombres y Apellidos en IMPORTADOS
+    const indiceNombresImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosImp = encabezadosImportados.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
+
+    // Encontrar índice de Nombres y Apellidos en ARCHIVO
+    const indiceNombresArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'nombres'
+    );
+    const indiceApellidosArch = encabezadosArchivo.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'apellidos'
+    );
+
+    // Construir Set de participantes del archivo
+    const participantesArchivados = new Set();
+    for (let i = 1; i < datosArchivo.length; i++) {
+      let participante = '';
+
+      if (indiceNombresArch >= 0) {
+        participante += (datosArchivo[i][indiceNombresArch] || '').toString().trim().toLowerCase();
+      }
+      if (indiceApellidosArch >= 0) {
+        participante += ' ' + (datosArchivo[i][indiceApellidosArch] || '').toString().trim().toLowerCase();
+      }
+
+      participante = participante.trim();
+      if (participante) {
+        participantesArchivados.add(participante);
+      }
+    }
+
+    Logger.log(`[Casos Filtro] Participantes en archivo: ${participantesArchivados.size}`);
+
+    // Filtrar datos importados
+    const datosFiltrados = [encabezadosImportados];
+    let eliminados = 0;
+    let conservados = 0;
+
+    for (let i = 1; i < datosImportados.length; i++) {
+      let participante = '';
+
+      if (indiceNombresImp >= 0) {
+        participante += (datosImportados[i][indiceNombresImp] || '').toString().trim().toLowerCase();
+      }
+      if (indiceApellidosImp >= 0) {
+        participante += ' ' + (datosImportados[i][indiceApellidosImp] || '').toString().trim().toLowerCase();
+      }
+
+      participante = participante.trim();
+
+      if (!participante || !participantesArchivados.has(participante)) {
+        datosFiltrados.push(datosImportados[i]);
+        conservados++;
+      } else {
+        eliminados++;
+      }
+    }
+
+    Logger.log(`[Casos Filtro] Eliminados: ${eliminados}, Conservados: ${conservados}`);
+
+    return datosFiltrados;
+
+  } catch (error) {
+    Logger.log(`[Casos Filtro] Error: ${error.message}`);
+    return datosImportados;
+  }
+}
+
+/**
  * Crea el menú personalizado al abrir la hoja
  */
 function onOpen() {
