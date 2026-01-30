@@ -822,31 +822,37 @@ function sincronizarConHojaPrincipal() {
       Logger.log(`  ✓ [ESPECIAL] ${e.nombre}`);
     });
 
-    // Detectar filas nuevas usando Participante - DOBLE VERIFICACIÓN
-    const participantesExistentes = new Set(); // Nombre completo
-    const nombresExistentes = new Set(); // Solo nombres (respaldo)
+    // Detectar filas nuevas usando Participante + Fecha de intervención
+    // IMPORTANTE: Una persona PUEDE tener VARIAS intervenciones en diferentes fechas
+    const intervencionesExistentes = new Set(); // ID único: Participante + Fecha
 
     const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
       col.toString().trim().toLowerCase() === 'participante'
     );
 
+    const indiceFechaIntervencionDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'fecha de intervención' ||
+      col.toString().trim().toLowerCase() === 'fecha intervención' ||
+      col.toString().trim().toLowerCase() === 'fecha'
+    );
+
     for (let i = 1; i < datosDestino.length; i++) {
       if (indiceParticipanteDestino >= 0) {
         const participante = datosDestino[i][indiceParticipanteDestino];
+        const fechaIntervencion = indiceFechaIntervencionDestino >= 0 ? datosDestino[i][indiceFechaIntervencionDestino] : '';
+
         if (participante) {
           const participanteNorm = participante.toString().trim().toLowerCase();
-          participantesExistentes.add(participanteNorm);
+          const fechaNorm = fechaIntervencion ? fechaIntervencion.toString().trim() : '';
 
-          // RESPALDO: Guardar también solo el primer nombre
-          const partes = participanteNorm.split(/\s+/);
-          if (partes.length > 0 && partes[0]) {
-            nombresExistentes.add(partes[0]);
-          }
+          // Crear ID único: Participante + Fecha
+          const idUnico = `${participanteNorm}|${fechaNorm}`;
+          intervencionesExistentes.add(idUnico);
         }
       }
     }
 
-    Logger.log(`\nDatos existentes: ${participantesExistentes.size} participantes, ${nombresExistentes.size} nombres únicos`);
+    Logger.log(`\nIntervenciones existentes: ${intervencionesExistentes.size} registros únicos (Participante + Fecha)`);
 
     // Encontrar índice de la columna de fecha en origen (start)
     const indiceFechaOrigen = encabezadosOrigen.findIndex(col =>
@@ -891,32 +897,22 @@ function sincronizarConHojaPrincipal() {
         }
       });
 
-      // DOBLE VERIFICACIÓN de duplicados
+      // Verificar si es duplicado usando Participante + Fecha
       const participante = nuevaFila[indiceParticipanteDestino];
+      const fechaIntervencion = indiceFechaIntervencionDestino >= 0 ? nuevaFila[indiceFechaIntervencionDestino] : '';
       let esDuplicado = false;
 
       if (participante) {
         const participanteNorm = participante.toString().trim().toLowerCase();
+        const fechaNorm = fechaIntervencion ? fechaIntervencion.toString().trim() : '';
 
-        // Verificación 1: Participante completo
-        if (participantesExistentes.has(participanteNorm)) {
+        // Crear ID único para esta fila
+        const idUnico = `${participanteNorm}|${fechaNorm}`;
+
+        // Verificar si ya existe esta combinación Participante + Fecha
+        if (intervencionesExistentes.has(idUnico)) {
           esDuplicado = true;
-          Logger.log(`[Casos] Fila ${i + 1} omitida: duplicado por participante (${participanteNorm})`);
-        }
-
-        // Verificación 2: Solo nombre (respaldo - más estricto)
-        if (!esDuplicado) {
-          const partes = participanteNorm.split(/\s+/);
-          const primerNombre = partes[0];
-          const ultimoApellido = partes[partes.length - 1];
-
-          // Solo si tiene nombre Y apellido, verificar ambos
-          if (partes.length >= 2 && nombresExistentes.has(primerNombre)) {
-            // Si el nombre ya existe, es probable duplicado
-            Logger.log(`[Casos] Advertencia fila ${i + 1}: nombre "${primerNombre}" ya existe`);
-            // Nota: No marcamos como duplicado solo por nombre para evitar falsos positivos
-            // Solo alertamos en logs
-          }
+          Logger.log(`[Casos] Fila ${i + 1} omitida: duplicado (${participanteNorm} en ${fechaNorm})`);
         }
       }
 
@@ -925,12 +921,9 @@ function sincronizarConHojaPrincipal() {
         // Agregar al set para evitar duplicados en la misma sincronización
         if (participante) {
           const participanteNorm = participante.toString().trim().toLowerCase();
-          participantesExistentes.add(participanteNorm);
-
-          const partes = participanteNorm.split(/\s+/);
-          if (partes.length > 0 && partes[0]) {
-            nombresExistentes.add(partes[0]);
-          }
+          const fechaNorm = fechaIntervencion ? fechaIntervencion.toString().trim() : '';
+          const idUnico = `${participanteNorm}|${fechaNorm}`;
+          intervencionesExistentes.add(idUnico);
         }
       }
     }
@@ -1173,30 +1166,34 @@ function sincronizarAutomatico() {
     const { mapeoColumnas, columnasEspeciales } =
       mapearColumnasIntervencionCasos(encabezadosOrigen, encabezadosDestino);
 
-    // DOBLE VERIFICACIÓN - Sets de datos existentes
-    const participantesExistentes = new Set();
-    const nombresExistentes = new Set();
+    // Detectar intervenciones existentes usando Participante + Fecha
+    const intervencionesExistentes = new Set();
 
     const indiceParticipanteDestino = encabezadosDestino.findIndex(col =>
       col.toString().trim().toLowerCase() === 'participante'
     );
 
+    const indiceFechaIntervencionDestino = encabezadosDestino.findIndex(col =>
+      col.toString().trim().toLowerCase() === 'fecha de intervención' ||
+      col.toString().trim().toLowerCase() === 'fecha intervención' ||
+      col.toString().trim().toLowerCase() === 'fecha'
+    );
+
     for (let i = 1; i < datosDestino.length; i++) {
       if (indiceParticipanteDestino >= 0) {
         const participante = datosDestino[i][indiceParticipanteDestino];
+        const fechaIntervencion = indiceFechaIntervencionDestino >= 0 ? datosDestino[i][indiceFechaIntervencionDestino] : '';
+
         if (participante) {
           const participanteNorm = participante.toString().trim().toLowerCase();
-          participantesExistentes.add(participanteNorm);
-
-          const partes = participanteNorm.split(/\s+/);
-          if (partes.length > 0 && partes[0]) {
-            nombresExistentes.add(partes[0]);
-          }
+          const fechaNorm = fechaIntervencion ? fechaIntervencion.toString().trim() : '';
+          const idUnico = `${participanteNorm}|${fechaNorm}`;
+          intervencionesExistentes.add(idUnico);
         }
       }
     }
 
-    Logger.log(`[Casos Auto] Participantes: ${participantesExistentes.size}, Nombres: ${nombresExistentes.size}`);
+    Logger.log(`[Casos Auto] Intervenciones existentes: ${intervencionesExistentes.size}`);
 
     // Encontrar índice de la columna de fecha en origen (start)
     const indiceFechaOrigen = encabezadosOrigen.findIndex(col =>
@@ -1236,15 +1233,18 @@ function sincronizarAutomatico() {
         }
       });
 
-      // DOBLE VERIFICACIÓN de duplicados
+      // Verificar si es duplicado usando Participante + Fecha
       const participante = nuevaFila[indiceParticipanteDestino];
+      const fechaIntervencion = indiceFechaIntervencionDestino >= 0 ? nuevaFila[indiceFechaIntervencionDestino] : '';
       let esDuplicado = false;
 
       if (participante) {
         const participanteNorm = participante.toString().trim().toLowerCase();
+        const fechaNorm = fechaIntervencion ? fechaIntervencion.toString().trim() : '';
+        const idUnico = `${participanteNorm}|${fechaNorm}`;
 
-        // Verificación: Participante completo
-        if (participantesExistentes.has(participanteNorm)) {
+        // Verificar si ya existe esta combinación Participante + Fecha
+        if (intervencionesExistentes.has(idUnico)) {
           esDuplicado = true;
         }
       }
@@ -1253,12 +1253,9 @@ function sincronizarAutomatico() {
         filasNuevas.push(nuevaFila);
         if (participante) {
           const participanteNorm = participante.toString().trim().toLowerCase();
-          participantesExistentes.add(participanteNorm);
-
-          const partes = participanteNorm.split(/\s+/);
-          if (partes.length > 0 && partes[0]) {
-            nombresExistentes.add(partes[0]);
-          }
+          const fechaNorm = fechaIntervencion ? fechaIntervencion.toString().trim() : '';
+          const idUnico = `${participanteNorm}|${fechaNorm}`;
+          intervencionesExistentes.add(idUnico);
         }
       }
     }
