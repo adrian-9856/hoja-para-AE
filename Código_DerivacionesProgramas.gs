@@ -127,12 +127,9 @@ function archivarYLimpiarProg() {
 }
 
 /**
- * NOTA: Esta función ya NO se usa automáticamente.
- * El menú ahora se crea en MenuPrincipal.gs con la función onOpen()
- *
- * Esta función se mantiene comentada por si se necesita en el futuro.
+ * NOTA: Esta función crea el menú para Derivaciones de Programas
+ * Se puede llamar manualmente si es necesario
  */
-/*
 function onOpenDerivacionesProgramas() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🏢 Derivaciones Programas')
@@ -151,7 +148,6 @@ function onOpenDerivacionesProgramas() {
       .addItem('Ver Estado de Sincronización', 'verEstadoSincronizacionProg'))
     .addToUi();
 }
-*/
 
 /**
  * Detecta el separador del CSV (coma o punto y coma)
