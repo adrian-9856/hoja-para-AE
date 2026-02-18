@@ -31,6 +31,13 @@ function onOpen() {
       .addItem('Ver Estado de Sincronización', 'verEstadoSincronizacionDeriv'))
     .addToUi();
 
+  // MENÚ 3: Lista de Espera → Terapias
+  ui.createMenu('🏥 Terapias')
+    .addItem('📋 Copiar Lista de Espera → Terapias', 'copiarListaEsperaATerapias')
+    .addSeparator()
+    .addItem('🔍 Diagnosticar Columnas', 'diagnosticarListaEsperaYTerapias')
+    .addToUi();
+
   // MENÚ 2: Derivaciones Programas
   ui.createMenu('🏢 Derivaciones Programas')
     .addItem('📥 Importar Datos', 'importarCSVdesdeKoboProg')
